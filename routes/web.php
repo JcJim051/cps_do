@@ -1,0 +1,20 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\GerenciaController;
+use App\Http\Controllers\Admin\PersonaExportController;
+
+
+
+Route::get('/', function () {
+    return view('welcome');
+});
+
+Route::get('admin/gerencias-por-secretaria/{secretaria}', [GerenciaController::class, 'getGerenciasPorSecretaria']);
+
+
+Route::get('admin/persona/export', [PersonaExportController::class, 'export'])->name('persona.export');
+
+
+
+
