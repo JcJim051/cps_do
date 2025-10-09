@@ -7,7 +7,7 @@ use App\Http\Controllers\Admin\PersonaExportController;
 
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect('/admin');
 });
 
 Route::get('admin/gerencias-por-secretaria/{secretaria}', [GerenciaController::class, 'getGerenciasPorSecretaria']);
