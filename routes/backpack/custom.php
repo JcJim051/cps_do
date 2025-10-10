@@ -41,9 +41,9 @@ Route::group([
     Route::get('person/import', 'App\Http\Controllers\Admin\PersonaCrudController@importForm')->name('person.importForm');
     Route::post('person/import', 'App\Http\Controllers\Admin\PersonaCrudController@import')->name('person.import');
     Route::get('person/template', 'App\Http\Controllers\Admin\PersonaCrudController@downloadTemplate')->name('person.downloadTemplate');
-    Route::get('seguimiento/import', 'App\Http\Controllers\Admin\seguimientoCrudController@importForm')->name('seguimiento.importForm');
-    Route::post('seguimiento/import', 'App\Http\Controllers\Admin\seguimientoCrudController@import')->name('seguimiento.import');
-    Route::get('seguimiento/template', 'App\Http\Controllers\Admin\seguimientoCrudController@downloadTemplate')->name('seguimiento.downloadTemplate');
+    Route::get('seguimiento/import', 'App\Http\Controllers\Admin\SeguimientoCrudController@importForm')->name('seguimiento.importForm');
+    Route::post('seguimiento/import', 'App\Http\Controllers\Admin\SeguimientoCrudController@import')->name('seguimiento.import');
+    Route::get('seguimiento/template', 'App\Http\Controllers\Admin\SeguimientoCrudController@downloadTemplate')->name('seguimiento.downloadTemplate');
     
     
     Route::crud('autorizacion', 'AutorizacionCrudController');
