@@ -43,7 +43,8 @@ class PeopleTemplateExport implements WithMultipleSheets
                     'secretaria_id',
                     'gerencia_id',
                     'no_tocar',
-                    'referencias', // IDs separados por coma
+                    'referencias_id', // IDs separados por coma
+                    'referencias_2',
                 ];
             }
 
@@ -59,6 +60,7 @@ class PeopleTemplateExport implements WithMultipleSheets
         |--------------------------------------------------------------------------
         */
         $catalogos = [
+            ['table' => 'referencias', 'title' => 'C_referencias'],
             ['table' => 'estado_personas', 'title' => 'C_Estados_Persona'],
             ['table' => 'tipos', 'title' => 'C_Tipos'],
             ['table' => 'niveles_academicos', 'title' => 'C_Nivel_Academico'],
