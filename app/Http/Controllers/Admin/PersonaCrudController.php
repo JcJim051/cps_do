@@ -386,6 +386,7 @@ class PersonaCrudController extends CrudController
              // Dejamos un espacio si no tiene permiso, para mantener la grilla
              CRUD::addField(['name' => 'placeholder_ref', 'type' => 'custom_html', 'value' => '', 'wrapper' => ['class' => 'form-group col-md-4']]);
         }
+        CRUD::field('referencia_2')->label('Referencia 2')->wrapper(['class' => 'form-group col-md-4']);
     
         CRUD::field('caso_id')->label('Caso Especial')->type('select')
             ->entity('caso')

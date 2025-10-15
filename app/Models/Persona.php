@@ -32,6 +32,7 @@ class Persona extends Model
         'especializacion',
         'maestria',
         'referencia_id',
+        'referencia_2',
         'estado_persona_id', // ¡Nuevo!
         'tipos_id',           // ¡Nuevo!
         'foto',
