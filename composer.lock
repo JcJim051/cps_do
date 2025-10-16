@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "3c4f941fa3db9d428dabfb709158de7a",
+    "content-hash": "907b189db53bf512ce0af210b5b005f3",
     "packages": [
         {
             "name": "backpack/basset",
@@ -173,6 +173,75 @@
                 "source": "https://github.com/Laravel-Backpack/CRUD/tree/6.8.6"
             },
             "time": "2025-08-22T10:42:06+00:00"
+        },
+        {
+            "name": "backpack/pro",
+            "version": "2.2.36",
+            "source": {
+                "type": "git",
+                "url": "git@github.com:Laravel-Backpack/PRO.git",
+                "reference": "186e2a2af10e3825cc34e014b07f9d8254a13104"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://repo.backpackforlaravel.com/dist/backpack/pro/backpack-pro-186e2a2af10e3825cc34e014b07f9d8254a13104-zip-c97a25.zip",
+                "reference": "186e2a2af10e3825cc34e014b07f9d8254a13104",
+                "shasum": "0b985c0821698379ccbdbaad79128ec4130cfb5a"
+            },
+            "require": {
+                "backpack/crud": "^6.0.1"
+            },
+            "require-dev": {
+                "orchestra/testbench": "~5|~6",
+                "phpunit/phpunit": "~9.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Backpack\\Pro\\AddonServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Backpack\\Pro\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Backpack\\Pro\\Tests\\": "tests"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "vendor/bin/phpunit --testdox"
+                ]
+            },
+            "license": [
+                "Proprietary"
+            ],
+            "authors": [
+                {
+                    "name": "Cristian Tabacitu",
+                    "email": "cristian.tabacitu@backpackforlaravel.com",
+                    "homepage": "https://backpackforlaravel.com"
+                }
+            ],
+            "description": "Operations, Fields, Columns, Filters and Widgets for not-so-simple admin panels.",
+            "homepage": "https://github.com/digitallyhappy/backpack-pro",
+            "keywords": [
+                "Backpack",
+                "Backpack Addon",
+                "Backpack for Laravel",
+                "Laravel",
+                "Pro"
+            ],
+            "support": {
+                "source": "https://github.com/Laravel-Backpack/PRO/tree/2.2.36",
+                "issues": "https://github.com/Laravel-Backpack/PRO/issues"
+            },
+            "time": "2025-08-25T14:21:54+00:00"
         },
         {
             "name": "backpack/theme-tabler",

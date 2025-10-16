@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.2",
         "backpack/crud": "^6.8",
+        "backpack/pro": "^2.2",
         "backpack/theme-tabler": "^1.2",
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
@@ -62,6 +63,7 @@
             "dont-discover": []
         }
     },
+    
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
@@ -71,6 +73,13 @@
             "php-http/discovery": true
         }
     },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://repo.backpackforlaravel.com/"
+        }
+    ],
     "minimum-stability": "stable",
     "prefer-stable": true
+    
 }

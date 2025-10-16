@@ -33,6 +33,64 @@ class SeguimientoCrudController extends CrudController
 
     protected function setupListOperation(): void
     {
+        // Filtro por Persona (persona_id)
+        $this->crud->addFilter([
+            'name'  => 'persona_id',
+            'type'  => 'select2',
+            'label' => 'Nombre'
+        ], function () {
+            return \App\Models\Persona::pluck('nombre_contratista', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'persona_id', $value);
+        });
+
+        // Filtro por Tipo (entrevista / contrato u otros valores que tenga tu BD)
+        $this->crud->addFilter([
+            'name'  => 'tipo',
+            'type'  => 'dropdown',
+            'label' => 'Tipo'
+        ], [
+            'entrevista' => 'Entrevista',
+            'contrato'   => 'Contrato',
+            // Agrega más valores si existen
+        ], function ($value) {
+            $this->crud->addClause('where', 'tipo', $value);
+        });
+
+        // Filtro por Estado dinámico
+        $this->crud->addFilter([
+            'name'  => 'estado',
+            'type'  => 'text',
+            'label' => 'Estado'
+        ], false, function ($value) {
+            $this->crud->query->where(function ($q) use ($value) {
+                $q->where('estado', 'LIKE', "%$value%")
+                ->orWhere('estado_contrato', 'LIKE', "%$value%");
+            });
+        });
+
+        // Filtro por Observaciones dinámicas
+        $this->crud->addFilter([
+            'name'  => 'observaciones',
+            'type'  => 'text',
+            'label' => 'Observaciones'
+        ], false, function ($value) {
+            $this->crud->query->where(function ($q) use ($value) {
+                $q->where('observaciones', 'LIKE', "%$value%")
+                ->orWhere('observaciones_contrato', 'LIKE', "%$value%");
+            });
+        });
+
+        // Filtro por Año (anio)
+        $this->crud->addFilter([
+            'name'  => 'anio',
+            'type'  => 'dropdown',
+            'label' => 'Año'
+        ], function () {
+            return \App\Models\TuModelo::select('anio')->distinct()->pluck('anio', 'anio')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'anio', $value);
+        });
 
         
         CRUD::column('persona_id')
@@ -77,7 +135,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'persona_id',
             'label' => 'Nombre',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'persona',
             'model' => 'App\\Models\\Persona',
             'attribute' => 'nombre_contratista',
@@ -88,7 +146,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'tipo',
             'label' => 'Tipo de Proceso',
-            'type' => 'select_from_array',
+            'type' => 'select2_from_array',
             'options' => [
                 'contrato' => 'Contrato',
                 'entrevista' => 'Entrevista'

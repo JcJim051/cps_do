@@ -44,138 +44,6 @@ class PersonaCrudController extends CrudController
     {
         
         $user = backpack_user();
-
-
-        $this->crud->addFilter([
-            'name'  => 'nivel_academico_id',
-            'type'  => 'select2',
-            'label' => 'Nivel Académico'
-        ], function () {
-            return \App\Models\NivelAcademico::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('whereHas', 'nivelAcademico', function ($q) use ($value) {
-                $q->where('id', $value);
-            });
-        });
-        
-        // Estado Persona
-        $this->crud->addFilter([
-            'name'  => 'estado_persona_id',
-            'type'  => 'select2',
-            'label' => 'Estado'
-        ], function () {
-            return \App\Models\EstadoPersona::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('whereHas', 'estadoPersona', function ($q) use ($value) {
-                $q->where('id', $value);
-            });
-        });
-        
-        // Tipo
-        $this->crud->addFilter([
-            'name'  => 'tipo_id',
-            'type'  => 'select2',
-            'label' => 'Tipo'
-        ], function () {
-            return \App\Models\Tipo::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('whereHas', 'tipo', function ($q) use ($value) {
-                $q->where('id', $value);
-            });
-        });
-        
-      
-        
-        // Referencias (muchos a muchos)
-        $this->crud->addFilter([
-            'name'  => 'referencias',
-            'type'  => 'select2',
-            'label' => 'Referencia'
-        ], function () {
-            return \App\Models\Referencia::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('whereHas', 'referencias', function ($q) use ($value) {
-                $q->where('id', $value);
-            });
-        });
-
-
-    
-        // Profesión (text) - convertimos a select2 con valores únicos existentes
-        $this->crud->addFilter([
-            'name'  => 'profesion',
-            'type'  => 'select2',
-            'label' => 'Profesión'
-        ], function () {
-            return \App\Models\Persona::distinct()->pluck('tecnico_tecnologo_profesion', 'tecnico_tecnologo_profesion')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'tecnico_tecnologo_profesion', $value);
-        });
-
-        
-
-        
-        // Género
-    $this->crud->addFilter([
-        'name'  => 'genero',
-        'type'  => 'select2',
-        'label' => 'Género'
-    ], function () {
-        return [
-            'Femenino' => 'Femenino',
-            'Masculino' => 'Masculino',
-        ];
-    }, function ($value) {
-        $this->crud->addClause('where', 'genero', $value);
-    });
-
-        // Caso
-        $this->crud->addFilter([
-            'name'  => 'caso_id',
-            'type'  => 'select2',
-            'label' => 'Caso'
-        ], function () {
-            return \App\Models\Caso::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'caso_id', $value);
-        });
-          // Secretaría
-          $this->crud->addFilter([
-            'name'  => 'secretaria_id',
-            'type'  => 'select2',
-            'label' => 'Secretaría'
-        ], function () {
-            return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'secretaria_id', $value);
-        });
-
-        // Gerencia
-        $this->crud->addFilter([
-            'name'  => 'gerencia_id',
-            'type'  => 'select2',
-            'label' => 'Gerencia'
-        ], function () {
-            return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'gerencia_id', $value);
-        });
-
-        
-
-        
-
-
-
-
-
-
-
-
-
-
-        // Opcional: mantener los filtros en URL
-        $this->crud->enablePersistentTable();
     
         // Nombre Contratista
         CRUD::addColumn([
@@ -219,15 +87,19 @@ class PersonaCrudController extends CrudController
             },
         ]);
     
-        
-        // profesion
+        // Nivel Académico (relación)
         CRUD::addColumn([
-            'name' => 'tecnico_tecnologo_profesion',
-            'label' => 'Profesion',
-            'type' => 'text',
+            'label' => 'Nivel Académico',
+            'type' => 'select',
+            'name' => 'nivel_academico_id',
+            'entity' => 'nivelAcademico',
+            'attribute' => 'nombre',
+            'model' => NivelAcademico::class,
             'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
             'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhere('tecnico_tecnologo_profesion', 'like', '%'.$searchTerm.'%');
+                $query->orWhereHas('nivelAcademico', function($q) use ($searchTerm) {
+                    $q->where('nombre', 'like', '%'.$searchTerm.'%');
+                });
             },
         ]);
             
@@ -280,20 +152,7 @@ class PersonaCrudController extends CrudController
                 });
             },
         ]);
-        CRUD::addColumn([
-            'label' => 'Nivel Académico',
-            'type' => 'select',
-            'name' => 'nivel_academico_id',
-            'entity' => 'nivelAcademico',
-            'attribute' => 'nombre',
-            'model' => NivelAcademico::class,
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('nivelAcademico', function($q) use ($searchTerm) {
-                    $q->where('nombre', 'like', '%'.$searchTerm.'%');
-                });
-            },
-        ]);
+        
         // No Tocar (badge visual)
         CRUD::addColumn([
             'name' => 'no_tocar',
@@ -465,14 +324,14 @@ class PersonaCrudController extends CrudController
         CRUD::field('celular')->label('Celular')->wrapper(['class' => 'form-group col-md-4']);
     
         // --- FILA 2: Género, Tipo y Estado (Nuevos campos) ---
-        CRUD::field('genero')->label('Género')->type('select2_from_array')
+        CRUD::field('genero')->label('Género')->type('select_from_array')
             ->options(['Masculino' => 'Masculino', 'Femenino' => 'Femenino'])
             ->wrapper(['class' => 'form-group col-md-4']);
         
         // NUEVO CAMPO: Tipo
         CRUD::addField([
             'label'     => "Tipo de Vinculación",
-            'type'      => 'select2',
+            'type'      => 'select',
             'name'      => 'tipos_id',
             'entity'    => 'tipo',
             'attribute' => 'nombre',
@@ -484,7 +343,7 @@ class PersonaCrudController extends CrudController
         // NUEVO CAMPO: Estado Persona (Reemplaza 'estado' y usa la relación)
         CRUD::addField([
             'label'     => "Estado de la Persona",
-            'type'      => 'select2',
+            'type'      => 'select',
             'name'      => 'estado_persona_id',
             'entity'    => 'estadoPersona',
             'attribute' => 'nombre',
@@ -497,7 +356,7 @@ class PersonaCrudController extends CrudController
         // --- FILA 3: Nivel Académico y Formación ---
         CRUD::addField([
             'label'     => "Nivel Académico",
-            'type'      => 'select2',
+            'type'      => 'select',
             'name'      => 'nivel_academico_id',
             'entity'    => 'nivelAcademico',
             'attribute' => 'nombre',
@@ -516,7 +375,7 @@ class PersonaCrudController extends CrudController
             CRUD::addField([
                 'name' => 'referencias', // ¡PLURAL!
                 'label' => 'Referencia(s)',
-                'type' => 'select2_multiple', // ¡Campo de selección múltiple!
+                'type' => 'select_multiple', // ¡Campo de selección múltiple!
                 'entity' => 'referencias',
                 'model' => Referencia::class,
                 'attribute' => 'nombre',
@@ -529,36 +388,57 @@ class PersonaCrudController extends CrudController
         }
         CRUD::field('referencia_2')->label('Referencia 2')->wrapper(['class' => 'form-group col-md-4']);
     
-        CRUD::field('caso_id')->label('Caso Especial')->type('select2')
+        CRUD::field('caso_id')->label('Caso Especial')->type('select')
             ->entity('caso')
             ->attribute('nombre')
             ->model(\App\Models\Caso::class)
             ->wrapper(['class' => 'form-group col-md-4']);
     
         // --- FILA 5: Secretaría y Gerencia ---
-            // --- FILA 5: Secretaría ---
-            CRUD::addField([
-                'name' => 'secretaria_id',
-                'label' => 'Secretaría',
-                'type' => 'select',
-                'entity' => 'secretaria',
-                'attribute' => 'nombre',
-                'model' => \App\Models\Secretaria::class,
-                'wrapper' => ['class' => 'form-group col-md-4'],
-                'allows_null' => true,
-            ]);
+        CRUD::addField([
+            'name' => 'secretaria_id',
+            'label' => 'Secretaría',
+            'type' => 'select',
+            'entity' => 'secretaria',
+            'attribute' => 'nombre',
+            'model' => \App\Models\Secretaria::class,
+            'wrapper' => ['class' => 'form-group col-md-4'],
+            'allows_null' => true,
+        ]);
+    
+        CRUD::addField([
+            'name' => 'gerencia_id',
+            'label' => 'Gerencia',
+            'type' => 'select',
+            'entity' => 'gerencia',
+            'attribute' => 'nombre',
+            'model' => \App\Models\Gerencia::class,
+            'wrapper' => ['class' => 'form-group col-md-4'],
+            'allows_null' => true,
+        ]);
+
+        CRUD::field('no_tocar')->label('No Tocar')->type('checkbox')->wrapper(['class' => 'form-group col-md-4']);
         
-            CRUD::addField([
-                'name' => 'gerencia_id',
-                'label' => 'Gerencia',
-                'type' => 'select2',
-                'entity' => 'gerencia',
-                'attribute' => 'nombre',
-                'model' => \App\Models\Gerencia::class,
-                'wrapper' => ['class' => 'form-group col-md-4'],
-                'allows_null' => true,
-            ]);
-        
+        // --- FILA 6: Archivos ---
+        CRUD::addField([
+            'name' => 'foto',
+            'label' => 'Foto (Imagen)',
+            'type' => 'upload',
+            'upload' => true,
+            'disk' => 'public',
+            'wrapper' => ['class' => 'form-group col-md-4'],
+        ]);
+    
+        CRUD::addField([
+            'name' => 'documento_pdf',
+            'label' => 'Documento (PDF)',
+            'type' => 'upload',
+            'upload' => true,
+            'disk' => 'public',
+            'wrapper' => ['class' => 'form-group col-md-4'],
+        ]);
+
+        // --- JS para filtrar gerencias según secretaria (SE MANTIENE) ---
         CRUD::addField([
             'name'  => 'filtrado_js',
             'type'  => 'custom_html',
@@ -605,32 +485,6 @@ class PersonaCrudController extends CrudController
                 });
             </script>',
         ]);
-
-        
-        
-        
-
-        CRUD::field('no_tocar')->label('No Tocar')->type('checkbox')->wrapper(['class' => 'form-group col-md-4']);
-        
-        // --- FILA 6: Archivos ---
-        CRUD::addField([
-            'name' => 'foto',
-            'label' => 'Foto (Imagen)',
-            'type' => 'upload',
-            'upload' => true,
-            'disk' => 'public',
-            'wrapper' => ['class' => 'form-group col-md-4'],
-        ]);
-    
-        CRUD::addField([
-            'name' => 'documento_pdf',
-            'label' => 'Documento (PDF)',
-            'type' => 'upload',
-            'upload' => true,
-            'disk' => 'public',
-            'wrapper' => ['class' => 'form-group col-md-4'],
-        ]);
-
     }
     
     //------------------------------

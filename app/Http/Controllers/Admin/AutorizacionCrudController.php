@@ -29,6 +29,62 @@ class AutorizacionCrudController extends CrudController
     {
         $this->crud->addClause('where', 'tipo', 'contrato');
 
+        // Filtro por Secretaría (secretaria_id)
+        $this->crud->addFilter([
+            'name'  => 'secretaria_id',
+            'type'  => 'select2',
+            'label' => 'Secretaría'
+        ], function () {
+            // Retorna las opciones para el dropdown
+            return \App\Models\Secretaria::pluck('convencion', 'id')->toArray();
+        }, function ($value) {
+            // Aplica el filtro
+            $this->crud->addClause('where', 'secretaria_id', $value);
+        });
+
+        // Filtro por Persona (persona_id)
+        $this->crud->addFilter([
+            'name'  => 'persona_id',
+            'type'  => 'select2',
+            'label' => 'Persona'
+        ], function () {
+            return \App\Models\Persona::pluck('nombre_contratista', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'persona_id', $value);
+        });
+
+        // Filtro por Valor Total (rango numérico)
+        $this->crud->addFilter([
+            'type'  => 'range',
+            'name'  => 'valor_total',
+            'label' => 'Valor Total'
+        ],
+        false,
+        function ($value) {
+            $range = json_decode($value);
+            if ($range->from) {
+                $this->crud->addClause('where', 'valor_total', '>=', (float)$range->from);
+            }
+            if ($range->to) {
+                $this->crud->addClause('where', 'valor_total', '<=', (float)$range->to);
+            }
+        });
+
+        // Filtro Autorizaciones (Aut 1, 2, 3)
+        $this->crud->addFilter([
+            'name'  => 'autorizaciones',
+            'type'  => 'dropdown',
+            'label' => 'Autorizaciones'
+        ], [
+            'aut_despacho'     => 'Aut 1',
+            'aut_planeacion'   => 'Aut 2',
+            'aut_administrativa' => 'Aut 3'
+        ], function ($value) {
+            $this->crud->addClause('where', $value, 1); // Asumiendo que es 1 = autorizado
+        });
+
+
+
         CRUD::column('secretaria_id')
             ->label('Secretaría')
             ->entity('secretaria')

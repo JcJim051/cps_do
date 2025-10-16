@@ -29,6 +29,12 @@ class GerenciaCrudController extends CrudController
      */
     protected function setupListOperation(): void
     {
+
+        CRUD::addColumn([
+            'name' => 'id',
+            'label' => 'ID'
+        ]);
+      
         CRUD::column('convencion')->label('Sigla');
 
         CRUD::column('secretaria_id')

@@ -36,31 +36,113 @@ class SeguimientoCrudController extends CrudController
         // 🚨 CORRECCIÓN: Usar el nombre de vista que creamos
         $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end'); 
         
+        // Filtro por Persona (persona_id)
+        $this->crud->addFilter([
+            'name'  => 'persona_id',
+            'type'  => 'select2',
+            'label' => 'Nombre'
+        ], function () {
+            return \App\Models\Persona::pluck('nombre_contratista', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'persona_id', $value);
+        });
+
+        // Filtro por Tipo (entrevista / contrato u otros valores que tenga tu BD)
+        $this->crud->addFilter([
+            'name'  => 'tipo',
+            'type'  => 'dropdown',
+            'label' => 'Tipo'
+        ], [
+            'entrevista' => 'Entrevista',
+            'contrato'   => 'Contrato',
+            // Agrega más valores si existen
+        ], function ($value) {
+            $this->crud->addClause('where', 'tipo', $value);
+        });
+
+        $this->crud->addFilter([
+            'name'  => 'estado_contrato_id',
+            'type'  => 'select2',
+            'label' => 'Estado Contrato'
+        ], function () {
+            return \App\Models\Estados::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'estado_contrato_id', $value);
+        });
+        
+
+        // Filtro por Observaciones dinámicas
+        $this->crud->addFilter([
+            'name'  => 'observaciones',
+            'type'  => 'text',
+            'label' => 'Observaciones'
+        ], false, function ($value) {
+            $this->crud->query->where(function ($q) use ($value) {
+                $q->where('observaciones', 'LIKE', "%$value%")
+                ->orWhere('observaciones_contrato', 'LIKE', "%$value%");
+            });
+        });
+
+        // Filtro por Año (anio)
+        $this->crud->addFilter([
+            'name'  => 'anio',
+            'type'  => 'dropdown',
+            'label' => 'Año'
+        ], function () {
+            return \App\Models\Seguimiento::select('anio')->distinct()->pluck('anio', 'anio')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'anio', $value);
+        });
+          // Secretaría
+          $this->crud->addFilter([
+            'name'  => 'secretaria_id',
+            'type'  => 'select2',
+            'label' => 'Secretaría'
+        ], function () {
+            return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'secretaria_id', $value);
+        });
+
+        // Gerencia
+        $this->crud->addFilter([
+            'name'  => 'gerencia_id',
+            'type'  => 'select2',
+            'label' => 'Gerencia'
+        ], function () {
+            return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'gerencia_id', $value);
+        });
+
+        
         CRUD::column('persona_id')
             ->label('Nombre')
             ->type('select')
             ->entity('persona')
             ->model(\App\Models\Persona::class)
             ->attribute('nombre_contratista');
-
+    
         CRUD::column('tipo')->label('Tipo');
-
+    
+        // Campo "estado" dinámico
         CRUD::addColumn([
             'name'     => 'estado_dynamic',
             'label'    => 'Estado',
             'type'     => 'closure',
-            'function' => function ($entry) {
+            'function' => function($entry) {
                 return $entry->tipo === 'entrevista'
-                    ? optional($entry->estado)->nombre
-                    : optional($entry->estadoContrato)->nombre;
+                    ? $entry->estado
+                    : $entry->estado_contrato;
             },
         ]);
-
+    
+        // Campo "observaciones" dinámico
         CRUD::addColumn([
             'name'     => 'observaciones_dynamic',
             'label'    => 'Observaciones',
             'type'     => 'closure',
-            'function' => function ($entry) {
+            'function' => function($entry) {
                 return $entry->tipo === 'entrevista'
                     ? $entry->observaciones
                     : $entry->observaciones_contrato;
@@ -77,7 +159,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'persona_id',
             'label' => 'Nombre',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'persona',
             'model' => 'App\\Models\\Persona',
             'attribute' => 'nombre_contratista',
@@ -88,7 +170,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'tipo',
             'label' => 'Tipo de Proceso',
-            'type' => 'select_from_array',
+            'type' => 'select2_from_array',
             'options' => [
                 'contrato' => 'Contrato',
                 'entrevista' => 'Entrevista',
@@ -111,7 +193,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'gerencia_id',
             'label' => 'Gerencia',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'gerencia',
             'attribute' => 'nombre',
             'model' => \App\Models\Gerencia::class,
@@ -137,7 +219,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'estado_id',
             'label' => 'Estado entrevista',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'estado',
             'model' => 'App\\Models\\Estados',
             'attribute' => 'nombre',
@@ -162,7 +244,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'estado_contrato_id',
             'label' => 'Estado Contrato',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'estadoContrato',
             'model' => 'App\\Models\\Estados',
             'attribute' => 'nombre',
@@ -283,7 +365,7 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'evaluacion_id',
             'label' => 'Evaluación',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'evaluacion',
             'model' => 'App\\Models\\Evaluacion',
             'attribute' => 'nombre',
@@ -293,14 +375,14 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'continua',
             'label' => 'Continua',
-            'type' => 'select_from_array',
+            'type' => 'select2_from_array',
             'options' => ['SI' => 'SI', 'NO' => 'NO'],
             'wrapper' => ['class' => 'form-group col-md-4 contrato-field'],
         ]);
         CRUD::addField([
             'name' => 'fuente_id',
             'label' => 'Fuente de Financiacion',
-            'type' => 'select',
+            'type' => 'select2',
             'entity' => 'fuente',
             'attribute' => 'nombre',
             'model' => \App\Models\Fuente::class,
