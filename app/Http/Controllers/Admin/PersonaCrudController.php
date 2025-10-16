@@ -116,61 +116,52 @@ class PersonaCrudController extends CrudController
 
         
         // Género
-    $this->crud->addFilter([
-        'name'  => 'genero',
-        'type'  => 'select2',
-        'label' => 'Género'
-    ], function () {
-        return [
-            'Femenino' => 'Femenino',
-            'Masculino' => 'Masculino',
-        ];
-    }, function ($value) {
-        $this->crud->addClause('where', 'genero', $value);
-    });
+            $this->crud->addFilter([
+                'name'  => 'genero',
+                'type'  => 'select2',
+                'label' => 'Género'
+            ], function () {
+                return [
+                    'Femenino' => 'Femenino',
+                    'Masculino' => 'Masculino',
+                ];
+            }, function ($value) {
+                $this->crud->addClause('where', 'genero', $value);
+            });
 
-        // Caso
-        $this->crud->addFilter([
-            'name'  => 'caso_id',
-            'type'  => 'select2',
-            'label' => 'Caso'
-        ], function () {
-            return \App\Models\Caso::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'caso_id', $value);
-        });
-          // Secretaría
-          $this->crud->addFilter([
-            'name'  => 'secretaria_id',
-            'type'  => 'select2',
-            'label' => 'Secretaría'
-        ], function () {
-            return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'secretaria_id', $value);
-        });
+                // Caso
+                $this->crud->addFilter([
+                    'name'  => 'caso_id',
+                    'type'  => 'select2',
+                    'label' => 'Caso'
+                ], function () {
+                    return \App\Models\Caso::pluck('nombre', 'id')->toArray();
+                }, function ($value) {
+                    $this->crud->addClause('where', 'caso_id', $value);
+                });
+                // Secretaría
+                $this->crud->addFilter([
+                    'name'  => 'secretaria_id',
+                    'type'  => 'select2',
+                    'label' => 'Secretaría'
+                ], function () {
+                    return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
+                }, function ($value) {
+                    $this->crud->addClause('where', 'secretaria_id', $value);
+                });
 
-        // Gerencia
-        $this->crud->addFilter([
-            'name'  => 'gerencia_id',
-            'type'  => 'select2',
-            'label' => 'Gerencia'
-        ], function () {
-            return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'gerencia_id', $value);
-        });
-
-        
+                // Gerencia
+                $this->crud->addFilter([
+                    'name'  => 'gerencia_id',
+                    'type'  => 'select2',
+                    'label' => 'Gerencia'
+                ], function () {
+                    return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
+                }, function ($value) {
+                    $this->crud->addClause('where', 'gerencia_id', $value);
+                });
 
         
-
-
-
-
-
-
-
 
 
 
@@ -694,6 +685,7 @@ class PersonaCrudController extends CrudController
                         'Secretaría' => $entry->secretaria?->nombre, 
                         'Gerencia' => $entry->gerencia?->nombre, 
                         'Caso especial' => $entry->caso?->nombre, 
+                        
                     ];
     
                     // Manejo de REFERENCIAS MÚLTIPLES (Many-to-Many)
@@ -703,7 +695,7 @@ class PersonaCrudController extends CrudController
                             ? '<div class="fw-bold">'.$referenciasNombres.'</div>'
                             : null;
                     }
-    
+                    $campos['Referencia 2'] = $entry->referencia_2;
                     // Generación de las tarjetas (todas usan col-md-4 para flujo de 3 columnas en el col-md-9)
                     foreach ($campos as $label => $valor) {
                         $valorDisplay = $valor;
