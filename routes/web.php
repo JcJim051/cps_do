@@ -16,5 +16,8 @@ Route::get('admin/gerencias-por-secretaria/{secretaria}', [GerenciaController::c
 Route::get('admin/persona/export', [PersonaExportController::class, 'export'])->name('persona.export');
 
 
-
+Route::get('seguimiento/{id}/print', function ($id) {
+    $seguimiento = \App\Models\Seguimiento::findOrFail($id);
+    return view('seguimiento.print', compact('seguimiento'));
+});
 

@@ -824,23 +824,50 @@ class PersonaCrudController extends CrudController
         public function import(Request $request)
         {
             $this->crud->hasAccessOrFail('create');
-
+        
             $request->validate([
                 'file' => 'required|file|mimes:csv,xlsx,xls',
             ]);
-
-            
-
+        
+            // Usamos una instancia del importador para leer sus errores luego
+            $import = new PeopleImport();
+        
             try {
-                // Esto es lo que está fallando silenciosamente:
-                \Excel::import(new PeopleImport, $request->file('file'));
-            } catch (\Exception $e) {
-                dd("FALLO ATRAVÉS DEL CATCH: " . $e->getMessage());
+                $import->import($request->file('file'));
+            } catch (\Throwable $e) {
+                $rawMessage = $e->getMessage();
+            
+                // Detectar errores comunes para simplificarlos ✅
+                if (str_contains($rawMessage, 'foreign key constraint fails')) {
+                    $cleanMessage = 'Referencia inválida: Verifica secretaria_id, gerencia_id o referencia_id';
+                } elseif (str_contains($rawMessage, 'Duplicate entry')) {
+                    $cleanMessage = 'Ya existe una persona con esta cédula';
+                } else {
+                    $cleanMessage = substr($rawMessage, 0, 100) . '...'; // Limitar a 100 caracteres
+                }
+            
+                $this->logicFailures[] = [
+                    'row' => $rowNumber ?? 'N/A',
+                    'cedula' => $row['cedula_o_nit'] ?? 'N/A',
+                    'errors' => [$cleanMessage],
+                ];
+            
+                Log::error("Error de BD/Asignación en Cédula " . ($row['cedula_o_nit'] ?? 'N/A') . ". Mensaje resumido: " . $cleanMessage);
             }
-
+        
+            // ✅ Si hay errores de lógica, los retornamos a la vista para listarlos
+            if (!empty($import->logicFailures)) {
+                return view('admin.person.import', [
+                    'crud' => $this->crud,
+                    'title' => 'Importar Personas',
+                    'importFailures' => $import->logicFailures // <-- PASAMOS LOS ERRORES A LA VISTA
+                ]);
+            }
+        
             \Alert::success('Registros importados exitosamente.')->flash();
             return redirect($this->crud->route);
         }
+        
         public function downloadTemplate()
         {
             return \Excel::download(new PeopleTemplateExport, 'plantilla_personas.xlsx');

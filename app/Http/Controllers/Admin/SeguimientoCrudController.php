@@ -93,8 +93,7 @@ class SeguimientoCrudController extends CrudController
         }, function ($value) {
             $this->crud->addClause('where', 'anio', $value);
         });
-          // Secretaría
-          $this->crud->addFilter([
+        $this->crud->addFilter([
             'name'  => 'secretaria_id',
             'type'  => 'select2',
             'label' => 'Secretaría'
@@ -133,21 +132,30 @@ class SeguimientoCrudController extends CrudController
             'function' => function($entry) {
                 return $entry->tipo === 'entrevista'
                     ? $entry->estado
-                    : $entry->estado_contrato;
+                    : optional($entry->estadoContrato)->nombre;
             },
         ]);
-    
+        
+        CRUD::column('anio')->label('Año');
         // Campo "observaciones" dinámico
         CRUD::addColumn([
-            'name'     => 'observaciones_dynamic',
-            'label'    => 'Observaciones',
+            'name'     => 'valor_total_contrato',
+            'label'    => 'Valor Contrato',
             'type'     => 'closure',
             'function' => function($entry) {
-                return $entry->tipo === 'entrevista'
-                    ? $entry->observaciones
-                    : $entry->observaciones_contrato;
+                return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');  // Ej: $ 25.000.000
             },
         ]);
+        // CRUD::addColumn([
+        //     'name'     => 'observaciones_dynamic',
+        //     'label'    => 'Observaciones',
+        //     'type'     => 'closure',
+        //     'function' => function($entry) {
+        //         return $entry->tipo === 'entrevista'
+        //             ? $entry->observaciones
+        //             : $entry->observaciones_contrato;
+        //     },
+        // ]);
     }
 
     // ... (El resto de setupCreateOperation y setupUpdateOperation se mantiene igual)
@@ -589,4 +597,122 @@ class SeguimientoCrudController extends CrudController
     {
         return \Maatwebsite\Excel\Facades\Excel::download(new SeguimientoTemplateExport, 'plantilla_seguimientos.xlsx');
     }
+
+    protected function setupShowOperation(): void
+    {
+        $this->crud->set('show.setFromDb', false);
+        $this->crud->set('show.contentClass', 'container-fluid');
+        
+
+        $this->crud->addColumn([
+            'name'     => 'detalle_seguimiento',
+            'label'    => 'Detalle del Seguimiento',
+            'type'     => 'closure',
+            'escaped'  => false,
+            'function' => function ($entry) {
+
+                // Persona relacionada
+                $persona = $entry->persona;
+                $personaCampos = [
+                    'Nombre' => $persona?->nombre_contratista,
+                    'Cédula/NIT' => $persona?->cedula_o_nit,
+                    'Celular' => $persona?->celular,
+                ];
+
+                // Campos generales (para ambos tipos)
+                $generales = [
+                    'Tipo' => ucfirst($entry->tipo),
+                    'Secretaría' => $entry->secretaria?->nombre,
+                    'Gerencia' => $entry->gerencia?->nombre,
+                   
+                ];
+
+                // Campos para ENTREVISTA
+                $entrevista = [
+                    'Fecha Entrevista' => $entry->fecha_entrevista,
+                    'Estado (Entrevista)' => $entry->estado?->nombre,
+                    'Observaciones' => $entry->observaciones,
+                ];
+
+                // Campos para CONTRATO
+                $contrato = [
+                    'Año' => $entry->anio,
+                    'Fuente' => $entry->fuente?->nombre,
+                    'Número Contrato' => $entry->numero_contrato,
+                    'Valor Mensual' => $entry->valor_mensual,
+                    'Fecha Acta Inicio' => $entry->fecha_acta_inicio,
+                    'Fecha Finalización' => $entry->fecha_finalizacion,
+                    'Tiempo Total Ejecución' => $entry->tiempo_total_ejecucion_dias,
+                    'Valor Total Contrato' => $entry->valor_total_contrato,
+                    'Estado Contrato' => $entry->estadoContrato?->nombre,
+                    'Aut. Despacho' => $entry->aut_despacho ? '✅' : '❌',
+                    'Aut. Planeación' => $entry->aut_planeacion ? '✅' : '❌',
+                    'Aut. Administrativa' => $entry->aut_administrativa ? '✅' : '❌',
+
+                    'Tiempo Ejecución (días)' => $entry->tiempo_ejecucion_dias,
+                    'Valor Total' => $entry->valor_total,
+                    'Adición' => $entry->adicion,
+                    'Fecha Acta Inicio Adic.' => $entry->fecha_acta_inicio_adicion,
+                    'Fecha Finalización Adic.' => $entry->fecha_finalizacion_adicion,
+                    'Tiempo Ejecución Adic.' => $entry->tiempo_ejecucion_dias_adicion,
+                    'Valor Adición' => $entry->valor_adicion,
+                    'Continúa' => $entry->continua ? '✅' : '❌',
+                    'Observaciones Contrato' => $entry->observaciones_contrato,
+                    
+                ];
+
+                // Render genérico
+                $html = "<div class='row'>";
+
+                // 🔹 Bloque: Persona
+                $html .= "<div class='col-12'><h5 class='mt-4 text-primary'>Datos de la Persona</h5><div class='row'>";
+                foreach ($personaCampos as $label => $valor) {
+                    $html .= self::renderCard($label, $valor);
+                }
+                $html .= "</div></div>";
+
+                // 🔹 Bloque: Generales
+                $html .= "<div class='col-12'><h5 class='mt-4 text-primary'>Datos Generales</h5><div class='row'>";
+                foreach ($generales as $label => $valor) {
+                    $html .= self::renderCard($label, $valor);
+                }
+                $html .= "</div></div>";
+
+                // 🔹 Bloque según tipo
+                if ($entry->tipo === 'contrato') {
+                    $html .= "<div class='col-12'><h5 class='mt-4 text-success'>Información del Contrato</h5><div class='row'>";
+                    foreach ($contrato as $label => $valor) {
+                        $html .= self::renderCard($label, $valor);
+                    }
+                    $html .= "</div></div>";
+                } elseif ($entry->tipo === 'entrevista') {
+                    $html .= "<div class='col-12'><h5 class='mt-4 text-info'>Información de la Entrevista</h5><div class='row'>";
+                    foreach ($entrevista as $label => $valor) {
+                        $html .= self::renderCard($label, $valor);
+                    }
+                    $html .= "</div></div>";
+                }
+
+                $html .= "</div>";
+                return $html;
+            }
+        ]);
+    }
+
+    // ✅ Helper para evitar repetir código
+    protected static function renderCard($label, $valor)
+    {
+        return '
+            <div class="mb-2 col-md-3">
+                <div class="border-0 shadow-sm card">
+                    <div class="px-3 py-2 card-body">
+                        <small class="text-muted">'.$label.'</small>
+                        <div class="fw-semibold">'.($valor ?? '<span class="text-muted">N/A</span>').'</div>
+                    </div>
+                </div>
+            </div>';
+    }
+
+
+
 }

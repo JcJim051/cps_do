@@ -35,11 +35,20 @@ class AutorizacionCrudController extends CrudController
             'type'  => 'select2',
             'label' => 'Secretaría'
         ], function () {
-            // Retorna las opciones para el dropdown
-            return \App\Models\Secretaria::pluck('convencion', 'id')->toArray();
+            return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
         }, function ($value) {
-            // Aplica el filtro
             $this->crud->addClause('where', 'secretaria_id', $value);
+        });
+
+        // Gerencia
+        $this->crud->addFilter([
+            'name'  => 'gerencia_id',
+            'type'  => 'select2',
+            'label' => 'Gerencia'
+        ], function () {
+            return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'gerencia_id', $value);
         });
 
         // Filtro por Persona (persona_id)
@@ -82,6 +91,8 @@ class AutorizacionCrudController extends CrudController
         ], function ($value) {
             $this->crud->addClause('where', $value, 1); // Asumiendo que es 1 = autorizado
         });
+
+        
 
 
 
