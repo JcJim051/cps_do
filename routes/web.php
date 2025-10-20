@@ -21,3 +21,6 @@ Route::get('seguimiento/{id}/print', function ($id) {
     return view('seguimiento.print', compact('seguimiento'));
 });
 
+
+
+

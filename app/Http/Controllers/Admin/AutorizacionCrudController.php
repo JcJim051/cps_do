@@ -28,7 +28,22 @@ class AutorizacionCrudController extends CrudController
     protected function setupListOperation(): void
     {
         $this->crud->addClause('where', 'tipo', 'contrato');
-
+        $this->crud->addFilter([
+            'name'  => 'anio',
+            'type'  => 'select2',
+            'label' => 'Año'
+        ], function () {
+            // Extraemos los años únicos desde la columna 'anio'
+            return \App\Models\Seguimiento::select('anio')
+                ->distinct()
+                ->orderBy('anio', 'desc')
+                ->pluck('anio', 'anio')
+                ->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'anio', $value);
+        });
+        
+        
         // Filtro por Secretaría (secretaria_id)
         $this->crud->addFilter([
             'name'  => 'secretaria_id',
@@ -50,7 +65,7 @@ class AutorizacionCrudController extends CrudController
         }, function ($value) {
             $this->crud->addClause('where', 'gerencia_id', $value);
         });
-
+       
         // Filtro por Persona (persona_id)
         $this->crud->addFilter([
             'name'  => 'persona_id',
