@@ -33,11 +33,12 @@ class SeguimientoCrudController extends CrudController
 
     protected function setupListOperation(): void
     {
-        
-        // 🚨 CORRECCIÓN: Usar el nombre de vista que creamos
-        $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end'); 
-        
-        // Filtro por Persona (persona_id)
+        // Botón superior
+        $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end');
+
+        // === FILTROS ===
+
+        // Filtro por Persona
         $this->crud->addFilter([
             'name'  => 'persona_id',
             'type'  => 'select2',
@@ -48,7 +49,7 @@ class SeguimientoCrudController extends CrudController
             $this->crud->addClause('where', 'persona_id', $value);
         });
 
-        // Filtro por Tipo (entrevista / contrato u otros valores que tenga tu BD)
+        // Filtro por Tipo (usa persona->tipos_id)
         $this->crud->addFilter([
             'name'  => 'tipo_id',
             'type'  => 'select2',
@@ -56,9 +57,12 @@ class SeguimientoCrudController extends CrudController
         ], function () {
             return \App\Models\Tipo::pluck('nombre', 'id')->toArray();
         }, function ($value) {
-            $this->crud->addClause('where', 'tipo_id', $value);
+            $this->crud->query->whereHas('persona', function ($q) use ($value) {
+                $q->where('tipos_id', $value);
+            });
         });
 
+        // Estado contrato
         $this->crud->addFilter([
             'name'  => 'estado_contrato_id',
             'type'  => 'select2',
@@ -68,9 +72,8 @@ class SeguimientoCrudController extends CrudController
         }, function ($value) {
             $this->crud->addClause('where', 'estado_contrato_id', $value);
         });
-        
 
-        // Filtro por Observaciones dinámicas
+        // Filtro por observaciones
         $this->crud->addFilter([
             'name'  => 'observaciones',
             'type'  => 'text',
@@ -82,7 +85,7 @@ class SeguimientoCrudController extends CrudController
             });
         });
 
-        // Filtro por Año (anio)
+        // Año
         $this->crud->addFilter([
             'name'  => 'anio',
             'type'  => 'dropdown',
@@ -92,6 +95,8 @@ class SeguimientoCrudController extends CrudController
         }, function ($value) {
             $this->crud->addClause('where', 'anio', $value);
         });
+
+        // Secretaría
         $this->crud->addFilter([
             'name'  => 'secretaria_id',
             'type'  => 'select2',
@@ -113,23 +118,50 @@ class SeguimientoCrudController extends CrudController
             $this->crud->addClause('where', 'gerencia_id', $value);
         });
 
-        
+
         $this->crud->setColumns([
             [
                 'name' => 'persona_id',
                 'label' => 'Nombre',
                 'type' => 'relationship',
                 'attribute' => 'nombre_contratista',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('persona', function ($q) use ($searchTerm) {
+                        $q->where('nombre_contratista', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title' => '{{$entry->persona->nombre_contratista ?? ""}}'
+                ],
             ],
             [
                 'name' => 'persona.tipo.nombre',
                 'label' => 'Tipo',
                 'type' => 'relationship',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('persona.tipo', function ($q) use ($searchTerm) {
+                        $q->where('nombre', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:90px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title' => '{{$entry->persona->tipo->nombre ?? ""}}'
+                ],
             ],
             [
                 'name' => 'anio',
                 'label' => 'Año',
                 'type' => 'text',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('anio', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:60px; text-align:center;'
+                ],
             ],
             [
                 'name' => 'estado_dynamic',
@@ -140,23 +172,54 @@ class SeguimientoCrudController extends CrudController
                         ? $entry->estado
                         : optional($entry->estadoContrato)->nombre;
                 },
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('estadoContrato', function ($q) use ($searchTerm) {
+                        $q->where('nombre', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title' => '{{$entry->tipo === "entrevista" ? $entry->estado : optional($entry->estadoContrato)->nombre}}'
+                ],
             ],
             [
                 'name'  => 'fecha_acta_inicio',
                 'label' => 'Inicio',
                 'type'  => 'date',
                 'format' => 'DD/MM/YYYY',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('fecha_acta_inicio', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:90px; text-align:center;'
+                ],
             ],
             [
                 'name'  => 'fecha_finalizacion',
                 'label' => 'Finalización',
                 'type'  => 'date',
                 'format' => 'DD/MM/YYYY',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('fecha_finalizacion', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:90px; text-align:center;'
+                ],
             ],
             [
                 'name'  => 'tiempo_total_ejecucion_dias',
                 'label' => 'Total Días',
                 'type'  => 'number',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('tiempo_total_ejecucion_dias', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:80px; text-align:center;'
+                ],
             ],
             [
                 'name'  => 'valor_total_contrato',
@@ -165,8 +228,16 @@ class SeguimientoCrudController extends CrudController
                 'function' => function($entry) {
                     return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');
                 },
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('valor_total_contrato', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right;',
+                    'title' => '{{$entry->valor_total_contrato}}'
+                ],
             ],
-            // 👇 Columna opcional: solo visible en pantallas grandes
+            // 👇 Columna oculta: Cédula (no visible pero sí buscable)
             [
                 'name' => 'cedula_persona',
                 'label' => 'Cédula/NIT',
@@ -184,15 +255,17 @@ class SeguimientoCrudController extends CrudController
                                 ->orderBy('personas.cedula_o_nit', $direction)
                                 ->select('seguimientos.*');
                 },
-                'visibleInTable' => false, // ❌ oculta por defecto en pantallas pequeñas
-                'visibleInModal' => true,  // ✅ visible si abres el registro
-                'visibleInExport' => true, // ✅ visible al exportar
+                'visibleInTable' => false,
+                'visibleInModal' => true,
+                'visibleInExport' => true,
             ],
         ]);
-        
 
-      
+        
+         
+
     }
+    
 
     // ... (El resto de setupCreateOperation y setupUpdateOperation se mantiene igual)
 
