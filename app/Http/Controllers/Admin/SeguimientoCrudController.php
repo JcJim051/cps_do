@@ -279,6 +279,50 @@ class SeguimientoCrudController extends CrudController
             
             
         ]);
+        // --- 🔎 Habilitar búsqueda por Cédula/NIT aunque la columna no exista ---
+        $this->crud->query->when(request()->input('search'), function ($query, $search) {
+            if (is_array($search)) {
+                $search = $search['value'] ?? reset($search) ?? null;
+            }
+            $search = trim((string) $search);
+
+            if ($search === '') {
+                return;
+            }
+
+            $query->where(function ($q) use ($search) {
+                // Buscar en todos los campos normales
+                $columns = \Schema::getColumnListing('seguimientos');
+                foreach ($columns as $column) {
+                    $q->orWhere("seguimientos.$column", 'like', "%{$search}%");
+                }
+
+                // Buscar en persona: nombre y cédula
+                $q->orWhereHas('persona', function ($q2) use ($search) {
+                    $q2->where('nombre_contratista', 'like', "%{$search}%")
+                    ->orWhere('cedula_o_nit', 'like', "%{$search}%");
+                });
+
+                // Tipo de persona
+                $q->orWhereHas('persona.tipo', function ($q3) use ($search) {
+                    $q3->where('nombre', 'like', "%{$search}%");
+                });
+
+                // Estado contrato
+                $q->orWhereHas('estadoContrato', function ($q4) use ($search) {
+                    $q4->where('nombre', 'like', "%{$search}%");
+                });
+
+                // Secretaría y Gerencia
+                $q->orWhereHas('secretaria', function ($q5) use ($search) {
+                    $q5->where('nombre', 'like', "%{$search}%");
+                });
+                $q->orWhereHas('gerencia', function ($q6) use ($search) {
+                    $q6->where('nombre', 'like', "%{$search}%");
+                });
+            });
+        });
+
 
         
          
