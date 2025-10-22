@@ -246,32 +246,37 @@ class SeguimientoCrudController extends CrudController
                     return optional($entry->persona)->cedula_o_nit ?? '-';
                 },
             
-                // 🔎 Permite buscar por cédula
+                // 🔎 Habilitar búsqueda por cédula
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('persona', function ($q) use ($searchTerm) {
                         $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
                     });
                 },
             
-                // 🔄 Permite ordenar por cédula si se exporta o usa en datatable
+                // 🔄 Permitir ordenamiento por cédula (para exportación o reportes)
                 'orderLogic' => function ($query, $column, $direction) {
                     return $query->leftJoin('personas', 'personas.id', '=', 'seguimientos.persona_id')
                                  ->orderBy('personas.cedula_o_nit', $direction)
                                  ->select('seguimientos.*');
                 },
             
-                // 🚫 Fuerza a ocultar en tabla y modal
+                // ⚙️ Indicamos que no debe renderizarse en la tabla
                 'visibleInTable' => false,
                 'visibleInModal' => false,
                 'visibleInExport' => true,
                 'visibleInShow' => false,
             
-                // 🚫 Backpack antiguas pueden ignorar lo anterior, así que se refuerza
+                // 🚫 Eliminamos cualquier traza visual en caso de que Backpack igual la pinte
                 'wrapper' => [
                     'element' => 'div',
-                    'style' => 'display:none !important; visibility:hidden;',
+                    'style' => 'display:none !important; visibility:hidden; width:0 !important; max-width:0 !important; overflow:hidden;',
                 ],
+            
+                // 🚫 Y además indicamos que no genere ancho de columna en DataTables
+                'escaped' => false, // evita que Backpack escape HTML
+                'priority' => -999, // lo manda al final y Backpack lo suele omitir
             ],
+            
             
         ]);
 
