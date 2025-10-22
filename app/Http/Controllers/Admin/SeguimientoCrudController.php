@@ -33,6 +33,7 @@ class SeguimientoCrudController extends CrudController
 
     protected function setupListOperation(): void
     {
+        
         // 🚨 CORRECCIÓN: Usar el nombre de vista que creamos
         $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end'); 
         
@@ -121,9 +122,18 @@ class SeguimientoCrudController extends CrudController
             ->entity('persona')
             ->model(\App\Models\Persona::class)
             ->attribute('nombre_contratista');
-    
-        CRUD::column('tipo')->label('Tipo');
-    
+        
+
+        CRUD::addColumn([
+                'name'  => 'persona.tipo.nombre',
+                'label' => 'Tipo',
+                'type'  => 'relationship',
+            ]);
+
+        
+        
+        CRUD::column('anio')->label('Año');
+            // Campo "observaciones" dinámico
         // Campo "estado" dinámico
         CRUD::addColumn([
             'name'     => 'estado_dynamic',
@@ -135,8 +145,37 @@ class SeguimientoCrudController extends CrudController
                     : optional($entry->estadoContrato)->nombre;
             },
         ]);
+        CRUD::addColumn([
+            'name'  => 'fecha_acta_inicio',
+            'label' => 'Inicio',
+            'type'  => 'date',
+            'format' => 'DD/MM/YYYY',
+        ]);
         
-        CRUD::column('anio')->label('Año');
+        CRUD::addColumn([
+            'name'  => 'fecha_finalizacion',
+            'label' => 'Finalización',
+            'type'  => 'date',
+            'format' => 'DD/MM/YYYY',
+        ]);
+        
+        CRUD::addColumn([
+            'name'  => 'tiempo_total_ejecucion_dias',
+            'label' => 'Total Días',
+            'type'  => 'number',
+        ]);
+        
+        CRUD::addColumn([
+            'name'     => 'valor_total_contrato',
+            'label'    => 'Valor Total',
+            'type'     => 'closure',
+            'function' => function($entry) {
+                return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');
+            },
+        ]);
+        
+        
+      
         // Campo "observaciones" dinámico
         CRUD::addColumn([
             'name'     => 'valor_total_contrato',
@@ -146,16 +185,28 @@ class SeguimientoCrudController extends CrudController
                 return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');  // Ej: $ 25.000.000
             },
         ]);
-        // CRUD::addColumn([
-        //     'name'     => 'observaciones_dynamic',
-        //     'label'    => 'Observaciones',
-        //     'type'     => 'closure',
-        //     'function' => function($entry) {
-        //         return $entry->tipo === 'entrevista'
-        //             ? $entry->observaciones
-        //             : $entry->observaciones_contrato;
-        //     },
-        // ]);
+
+        CRUD::addColumn([
+            'name' => 'cedula_persona', // alias virtual, no existe en BD
+            'label' => 'Cédula/NIT',
+            'type' => 'closure', // 👈 se usa closure porque el valor viene de una relación
+            'function' => function($entry) {
+                return optional($entry->persona)->cedula_o_nit ?? '-';
+            },
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                $query->orWhereHas('persona', function ($q) use ($searchTerm) {
+                    $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
+                });
+            },
+            'orderLogic' => function ($query, $column, $direction) {
+                return $query->leftJoin('personas', 'personas.id', '=', 'seguimientos.persona_id')
+                             ->orderBy('personas.cedula_o_nit', $direction)
+                             ->select('seguimientos.*');
+            },
+        ]);
+        
+
+      
     }
 
     // ... (El resto de setupCreateOperation y setupUpdateOperation se mantiene igual)
@@ -329,7 +380,7 @@ class SeguimientoCrudController extends CrudController
             'name' => 'tiempo_ejecucion_dias',
             'label' => 'Tiempo Ejecución (días)',
             'type' => 'number',
-            'attributes' => ['readonly'=>'readonly','style'=>'background-color:#f5f5f5;cursor:not-allowed;'],
+            // 'attributes' => ['readonly'=>'readonly','style'=>'background-color:#f5f5f5;cursor:not-allowed;'],
             'wrapper' => ['class' => 'form-group col-md-2 contrato-field']
         ]);CRUD::addField([
             'name' => 'valor_total',
@@ -350,7 +401,7 @@ class SeguimientoCrudController extends CrudController
             'name' => 'tiempo_ejecucion_dias_adicion',
             'label' => 'Adición (días) ',
             'type' => 'number',
-            'attributes' => ['readonly'=>'readonly','style'=>'background-color:#f5f5f5;cursor:not-allowed;'],
+            // 'attributes' => ['readonly'=>'readonly','style'=>'background-color:#f5f5f5;cursor:not-allowed;'],
             'wrapper' => ['class' => 'form-group col-md-2 contrato-field']
         ]);
         CRUD::addField([
@@ -602,39 +653,39 @@ class SeguimientoCrudController extends CrudController
     {
         $this->crud->set('show.setFromDb', false);
         $this->crud->set('show.contentClass', 'container-fluid');
-        
-
+    
         $this->crud->addColumn([
             'name'     => 'detalle_seguimiento',
             'label'    => 'Detalle del Seguimiento',
             'type'     => 'closure',
             'escaped'  => false,
             'function' => function ($entry) {
-
-                // Persona relacionada
+    
                 $persona = $entry->persona;
                 $personaCampos = [
                     'Nombre' => $persona?->nombre_contratista,
                     'Cédula/NIT' => $persona?->cedula_o_nit,
                     'Celular' => $persona?->celular,
                 ];
-
-                // Campos generales (para ambos tipos)
+    
                 $generales = [
                     'Tipo' => ucfirst($entry->tipo),
                     'Secretaría' => $entry->secretaria?->nombre,
                     'Gerencia' => $entry->gerencia?->nombre,
-                   
                 ];
-
-                // Campos para ENTREVISTA
+    
+                $autorizaciones = [
+                    'Aut. Despacho' => $entry->aut_despacho ? '✅' : '❌',
+                    'Aut. Planeación' => $entry->aut_planeacion ? '✅' : '❌',
+                    'Aut. Administrativa' => $entry->aut_administrativa ? '✅' : '❌',
+                ];
+    
                 $entrevista = [
                     'Fecha Entrevista' => $entry->fecha_entrevista,
                     'Estado (Entrevista)' => $entry->estado?->nombre,
                     'Observaciones' => $entry->observaciones,
                 ];
-
-                // Campos para CONTRATO
+    
                 $contrato = [
                     'Año' => $entry->anio,
                     'Fuente' => $entry->fuente?->nombre,
@@ -645,66 +696,71 @@ class SeguimientoCrudController extends CrudController
                     'Tiempo Total Ejecución' => $entry->tiempo_total_ejecucion_dias,
                     'Valor Total Contrato' => $entry->valor_total_contrato,
                     'Estado Contrato' => $entry->estadoContrato?->nombre,
-                    'Aut. Despacho' => $entry->aut_despacho ? '✅' : '❌',
-                    'Aut. Planeación' => $entry->aut_planeacion ? '✅' : '❌',
-                    'Aut. Administrativa' => $entry->aut_administrativa ? '✅' : '❌',
-
+                    'Evaluacion' => $entry->evaluacion?->nombre,
+                    'Adición' => $entry->adicion,
+                    'Continúa' => $entry->continua ? '✅' : '❌',
+                    'Observaciones Contrato' => $entry->observaciones_contrato,
                     'Tiempo Ejecución (días)' => $entry->tiempo_ejecucion_dias,
                     'Valor Total' => $entry->valor_total,
-                    'Adición' => $entry->adicion,
                     'Fecha Acta Inicio Adic.' => $entry->fecha_acta_inicio_adicion,
                     'Fecha Finalización Adic.' => $entry->fecha_finalizacion_adicion,
                     'Tiempo Ejecución Adic.' => $entry->tiempo_ejecucion_dias_adicion,
                     'Valor Adición' => $entry->valor_adicion,
-                    'Continúa' => $entry->continua ? '✅' : '❌',
-                    'Observaciones Contrato' => $entry->observaciones_contrato,
-                    
                 ];
-
-                // Render genérico
+    
                 $html = "<div class='row'>";
-
-                // 🔹 Bloque: Persona
-                $html .= "<div class='col-12'><h5 class='mt-4 text-primary'>Datos de la Persona</h5><div class='row'>";
+    
+                // 🔹 Datos de la Persona (3 columnas)
+                $html .= "<div class='col-12'><h5 class='mt-3 text-primary'>Datos de la Persona</h5><div class='row'>";
                 foreach ($personaCampos as $label => $valor) {
-                    $html .= self::renderCard($label, $valor);
+                    $html .= self::renderCard($label, $valor, 4); // col-md-4 = 3 columnas
                 }
                 $html .= "</div></div>";
-
-                // 🔹 Bloque: Generales
-                $html .= "<div class='col-12'><h5 class='mt-4 text-primary'>Datos Generales</h5><div class='row'>";
+    
+                // 🔹 Datos Generales (3 columnas)
+                $html .= "<div class='col-12'><h5 class='mt-3 text-primary'>Datos Generales</h5><div class='row'>";
                 foreach ($generales as $label => $valor) {
-                    $html .= self::renderCard($label, $valor);
+                    $html .= self::renderCard($label, $valor, 4);
                 }
                 $html .= "</div></div>";
-
-                // 🔹 Bloque según tipo
+    
+                // 🔹 Autorizaciones (3 columnas)
+                $html .= "<div class='col-12'><h5 class='mt-3 text-primary'>Autorizaciones</h5><div class='row'>";
+                foreach ($autorizaciones as $label => $valor) {
+                    $html .= self::renderCard($label, $valor, 4);
+                }
+                $html .= "</div></div>";
+    
+                // 🔹 Contrato (mantener en 4 columnas)
                 if ($entry->tipo === 'contrato') {
                     $html .= "<div class='col-12'><h5 class='mt-4 text-success'>Información del Contrato</h5><div class='row'>";
                     foreach ($contrato as $label => $valor) {
-                        $html .= self::renderCard($label, $valor);
-                    }
-                    $html .= "</div></div>";
-                } elseif ($entry->tipo === 'entrevista') {
-                    $html .= "<div class='col-12'><h5 class='mt-4 text-info'>Información de la Entrevista</h5><div class='row'>";
-                    foreach ($entrevista as $label => $valor) {
-                        $html .= self::renderCard($label, $valor);
+                        $html .= self::renderCard($label, $valor, 3); // col-md-3 = 4 columnas
                     }
                     $html .= "</div></div>";
                 }
-
+    
+                // 🔹 Entrevista (mantener en 4 columnas)
+                elseif ($entry->tipo === 'entrevista') {
+                    $html .= "<div class='col-12'><h5 class='mt-4 text-info'>Información de la Entrevista</h5><div class='row'>";
+                    foreach ($entrevista as $label => $valor) {
+                        $html .= self::renderCard($label, $valor, 3);
+                    }
+                    $html .= "</div></div>";
+                }
+    
                 $html .= "</div>";
                 return $html;
             }
         ]);
     }
-
-    // ✅ Helper para evitar repetir código
-    protected static function renderCard($label, $valor)
+    
+    // ✅ Helper actualizado para controlar columnas
+    protected static function renderCard($label, $valor, $col = 3)
     {
         return '
-            <div class="mb-2 col-md-3">
-                <div class="border-0 shadow-sm card">
+            <div class="mb-2 col-md-'.$col.'">
+                <div class="border-0 shadow-sm card h-100">
                     <div class="px-3 py-2 card-body">
                         <small class="text-muted">'.$label.'</small>
                         <div class="fw-semibold">'.($valor ?? '<span class="text-muted">N/A</span>').'</div>
@@ -712,7 +768,5 @@ class SeguimientoCrudController extends CrudController
                 </div>
             </div>';
     }
-
-
-
+    
 }
