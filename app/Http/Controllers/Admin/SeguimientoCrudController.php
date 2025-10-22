@@ -245,20 +245,34 @@ class SeguimientoCrudController extends CrudController
                 'function' => function($entry) {
                     return optional($entry->persona)->cedula_o_nit ?? '-';
                 },
+            
+                // 🔎 Permite buscar por cédula
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('persona', function ($q) use ($searchTerm) {
                         $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
                     });
                 },
+            
+                // 🔄 Permite ordenar por cédula si se exporta o usa en datatable
                 'orderLogic' => function ($query, $column, $direction) {
                     return $query->leftJoin('personas', 'personas.id', '=', 'seguimientos.persona_id')
-                                ->orderBy('personas.cedula_o_nit', $direction)
-                                ->select('seguimientos.*');
+                                 ->orderBy('personas.cedula_o_nit', $direction)
+                                 ->select('seguimientos.*');
                 },
+            
+                // 🚫 Fuerza a ocultar en tabla y modal
                 'visibleInTable' => false,
-                'visibleInModal' => true,
+                'visibleInModal' => false,
                 'visibleInExport' => true,
+                'visibleInShow' => false,
+            
+                // 🚫 Backpack antiguas pueden ignorar lo anterior, así que se refuerza
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'display:none !important; visibility:hidden;',
+                ],
             ],
+            
         ]);
 
         
