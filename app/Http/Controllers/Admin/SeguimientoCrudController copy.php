@@ -15,6 +15,7 @@ use Alert; // Usamos el paquete de alertas
 use Maatwebsite\Excel\Concerns\FromCollection; 
 use Maatwebsite\Excel\Concerns\Exportable;
 use Maatwebsite\Excel\Concerns\WithHeadings;
+use App\Exports\SeguimientoExport;
 
 class SeguimientoCrudController extends CrudController
 {
@@ -29,10 +30,14 @@ class SeguimientoCrudController extends CrudController
         CRUD::setModel(\App\Models\Seguimiento::class);
         CRUD::setRoute(config('backpack.base.route_prefix') . '/seguimiento');
         CRUD::setEntityNameStrings('seguimiento', 'seguimientos');
+       
+
     }
 
     protected function setupListOperation(): void
     {
+        $this->crud->addButtonFromView('top', 'export_excel', 'export_excel', 'beginning');
+
         // Filtro por Persona (persona_id)
         $this->crud->addFilter([
             'name'  => 'persona_id',
@@ -320,5 +325,14 @@ class SeguimientoCrudController extends CrudController
     protected function setupUpdateOperation(): void
     {
         $this->setupCreateOperation();
+    }
+
+    public function exportExcel()
+    {
+        // Tomamos la query actual del CRUD (incluye filtros aplicados por el usuario)
+        $query = $this->crud->getQuery();
+
+        // Retornamos la descarga del Excel
+        return Excel::download(new SeguimientoExport($query), 'seguimientos_filtrados.xlsx');
     }
 }

@@ -11,6 +11,7 @@
         "backpack/pro": "^2.2",
         "backpack/theme-tabler": "^1.2",
         "barryvdh/laravel-dompdf": "^3.1",
+        "consoletvs/charts": "^6.8",
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
         "maatwebsite/excel": "^3.1",

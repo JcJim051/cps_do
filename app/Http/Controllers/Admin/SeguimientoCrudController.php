@@ -15,6 +15,7 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\Exportable;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Carbon\Carbon; // Importamos Carbon para usar today()
+use App\Exports\SeguimientoExport;
 
 class SeguimientoCrudController extends CrudController
 {
@@ -29,12 +30,17 @@ class SeguimientoCrudController extends CrudController
         CRUD::setModel(\App\Models\Seguimiento::class);
         CRUD::setRoute(config('backpack.base.route_prefix') . '/seguimiento');
         CRUD::setEntityNameStrings('seguimiento', 'seguimientos');
+    
     }
 
     protected function setupListOperation(): void
     {
         // Botón superior
+       
         $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end');
+        $this->crud->addButtonFromView('top', 'export_excel', 'buttons.export_excel', 'end');
+        $this->crud->enableExportButtons();
+       
 
         // === FILTROS ===
 
@@ -819,5 +825,57 @@ class SeguimientoCrudController extends CrudController
                 </div>
             </div>';
     }
+    public function exportExcel(Request $request)
+    {
+       
+        // Partimos de la query base
+        $query = $this->crud->model->newQuery();
+
+        // Filtramos automáticamente según todos los query parameters que existan
+        $filters = $request->all(); // trae todos los filtros de la URL
+
+        foreach ($filters as $key => $value) {
+            if ($value === null || $value === '') continue; // ignorar vacíos
+
+            switch ($key) {
+                case 'anio':
+                case 'estado_contrato_id':
+                case 'secretaria_id':
+                case 'gerencia_id':
+                    $query->where($key, $value);
+                    break;
+
+                case 'persona_id':
+                    $query->where('persona_id', $value);
+                    break;
+
+                case 'persona_cedula':
+                    $query->whereHas('persona', fn($q) => $q->where('cedula_o_nit', $value));
+                    break;
+
+                case 'tipo_id':
+                    $query->whereHas('persona', fn($q) => $q->where('tipos_id', $value));
+                    break;
+
+                case 'observaciones':
+                    $query->where(function($q) use ($value) {
+                        $q->where('observaciones', 'LIKE', "%$value%")
+                        ->orWhere('observaciones_contrato', 'LIKE', "%$value%");
+                    });
+                    break;
+
+                // aquí puedes agregar más filtros si los agregas en el CRUD
+            }
+        }
+
+        // Obtener registros filtrados
+        $entries = $query->get();
+
+        // Exportar
+        return Excel::download(new SeguimientoExport($entries), 'seguimientos_filtrados.xlsx');
+    }
+
+
+
     
 }

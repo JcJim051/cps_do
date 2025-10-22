@@ -32,6 +32,8 @@ Route::group([
         Route::crud('tipo', 'TipoCrudController');
         Route::crud('role', 'RoleCrudController');
         Route::crud('permission', 'PermissionCrudController');
+        Route::get('indicadores', [\App\Http\Controllers\Admin\IndicadoresController::class, 'index'])->name('admin.indicadores');
+
     });
 
 
