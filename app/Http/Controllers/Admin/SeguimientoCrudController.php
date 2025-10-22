@@ -50,15 +50,13 @@ class SeguimientoCrudController extends CrudController
 
         // Filtro por Tipo (entrevista / contrato u otros valores que tenga tu BD)
         $this->crud->addFilter([
-            'name'  => 'tipo',
-            'type'  => 'dropdown',
+            'name'  => 'tipo_id',
+            'type'  => 'select2',
             'label' => 'Tipo'
-        ], [
-            'entrevista' => 'Entrevista',
-            'contrato'   => 'Contrato',
-            // Agrega más valores si existen
-        ], function ($value) {
-            $this->crud->addClause('where', 'tipo', $value);
+        ], function () {
+            return \App\Models\Tipo::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'tipo_id', $value);
         });
 
         $this->crud->addFilter([
@@ -116,93 +114,80 @@ class SeguimientoCrudController extends CrudController
         });
 
         
-        CRUD::column('persona_id')
-            ->label('Nombre')
-            ->type('select')
-            ->entity('persona')
-            ->model(\App\Models\Persona::class)
-            ->attribute('nombre_contratista');
-        
-
-        CRUD::addColumn([
-                'name'  => 'persona.tipo.nombre',
+        $this->crud->setColumns([
+            [
+                'name' => 'persona_id',
+                'label' => 'Nombre',
+                'type' => 'relationship',
+                'attribute' => 'nombre_contratista',
+            ],
+            [
+                'name' => 'persona.tipo.nombre',
                 'label' => 'Tipo',
-                'type'  => 'relationship',
-            ]);
-
-        
-        
-        CRUD::column('anio')->label('Año');
-            // Campo "observaciones" dinámico
-        // Campo "estado" dinámico
-        CRUD::addColumn([
-            'name'     => 'estado_dynamic',
-            'label'    => 'Estado',
-            'type'     => 'closure',
-            'function' => function($entry) {
-                return $entry->tipo === 'entrevista'
-                    ? $entry->estado
-                    : optional($entry->estadoContrato)->nombre;
-            },
-        ]);
-        CRUD::addColumn([
-            'name'  => 'fecha_acta_inicio',
-            'label' => 'Inicio',
-            'type'  => 'date',
-            'format' => 'DD/MM/YYYY',
-        ]);
-        
-        CRUD::addColumn([
-            'name'  => 'fecha_finalizacion',
-            'label' => 'Finalización',
-            'type'  => 'date',
-            'format' => 'DD/MM/YYYY',
-        ]);
-        
-        CRUD::addColumn([
-            'name'  => 'tiempo_total_ejecucion_dias',
-            'label' => 'Total Días',
-            'type'  => 'number',
-        ]);
-        
-        CRUD::addColumn([
-            'name'     => 'valor_total_contrato',
-            'label'    => 'Valor Total',
-            'type'     => 'closure',
-            'function' => function($entry) {
-                return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');
-            },
-        ]);
-        
-        
-      
-        // Campo "observaciones" dinámico
-        CRUD::addColumn([
-            'name'     => 'valor_total_contrato',
-            'label'    => 'Valor Contrato',
-            'type'     => 'closure',
-            'function' => function($entry) {
-                return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');  // Ej: $ 25.000.000
-            },
-        ]);
-
-        CRUD::addColumn([
-            'name' => 'cedula_persona', // alias virtual, no existe en BD
-            'label' => 'Cédula/NIT',
-            'type' => 'closure', // 👈 se usa closure porque el valor viene de una relación
-            'function' => function($entry) {
-                return optional($entry->persona)->cedula_o_nit ?? '-';
-            },
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('persona', function ($q) use ($searchTerm) {
-                    $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
-                });
-            },
-            'orderLogic' => function ($query, $column, $direction) {
-                return $query->leftJoin('personas', 'personas.id', '=', 'seguimientos.persona_id')
-                             ->orderBy('personas.cedula_o_nit', $direction)
-                             ->select('seguimientos.*');
-            },
+                'type' => 'relationship',
+            ],
+            [
+                'name' => 'anio',
+                'label' => 'Año',
+                'type' => 'text',
+            ],
+            [
+                'name' => 'estado_dynamic',
+                'label' => 'Estado',
+                'type' => 'closure',
+                'function' => function($entry) {
+                    return $entry->tipo === 'entrevista'
+                        ? $entry->estado
+                        : optional($entry->estadoContrato)->nombre;
+                },
+            ],
+            [
+                'name'  => 'fecha_acta_inicio',
+                'label' => 'Inicio',
+                'type'  => 'date',
+                'format' => 'DD/MM/YYYY',
+            ],
+            [
+                'name'  => 'fecha_finalizacion',
+                'label' => 'Finalización',
+                'type'  => 'date',
+                'format' => 'DD/MM/YYYY',
+            ],
+            [
+                'name'  => 'tiempo_total_ejecucion_dias',
+                'label' => 'Total Días',
+                'type'  => 'number',
+            ],
+            [
+                'name'  => 'valor_total_contrato',
+                'label' => 'Valor Total',
+                'type'  => 'closure',
+                'function' => function($entry) {
+                    return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');
+                },
+            ],
+            // 👇 Columna opcional: solo visible en pantallas grandes
+            [
+                'name' => 'cedula_persona',
+                'label' => 'Cédula/NIT',
+                'type' => 'closure',
+                'function' => function($entry) {
+                    return optional($entry->persona)->cedula_o_nit ?? '-';
+                },
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('persona', function ($q) use ($searchTerm) {
+                        $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'orderLogic' => function ($query, $column, $direction) {
+                    return $query->leftJoin('personas', 'personas.id', '=', 'seguimientos.persona_id')
+                                ->orderBy('personas.cedula_o_nit', $direction)
+                                ->select('seguimientos.*');
+                },
+                'visibleInTable' => false, // ❌ oculta por defecto en pantallas pequeñas
+                'visibleInModal' => true,  // ✅ visible si abres el registro
+                'visibleInExport' => true, // ✅ visible al exportar
+            ],
         ]);
         
 
