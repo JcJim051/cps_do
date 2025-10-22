@@ -95,17 +95,42 @@ class AutorizacionCrudController extends CrudController
         });
 
         // Filtro Autorizaciones (Aut 1, 2, 3)
+            // 🔹 Filtro Aut 1
         $this->crud->addFilter([
-            'name'  => 'autorizaciones',
+            'name'  => 'aut_despacho',
             'type'  => 'dropdown',
-            'label' => 'Autorizaciones'
+            'label' => 'Aut 1',
         ], [
-            'aut_despacho'     => 'Aut 1',
-            'aut_planeacion'   => 'Aut 2',
-            'aut_administrativa' => 'Aut 3'
+            1 => 'Autorizado ✅',
+            0 => 'No Autorizado ❌',
         ], function ($value) {
-            $this->crud->addClause('where', $value, 1); // Asumiendo que es 1 = autorizado
+            $this->crud->addClause('where', 'aut_despacho', $value);
         });
+
+        // 🔹 Filtro Aut 2
+        $this->crud->addFilter([
+            'name'  => 'aut_planeacion',
+            'type'  => 'dropdown',
+            'label' => 'Aut 2',
+        ], [
+            1 => 'Autorizado ✅',
+            0 => 'No Autorizado ❌',
+        ], function ($value) {
+            $this->crud->addClause('where', 'aut_planeacion', $value);
+        });
+
+        // 🔹 Filtro Aut 3
+        $this->crud->addFilter([
+            'name'  => 'aut_administrativa',
+            'type'  => 'dropdown',
+            'label' => 'Aut 3',
+        ], [
+            1 => 'Autorizado ✅',
+            0 => 'No Autorizado ❌',
+        ], function ($value) {
+            $this->crud->addClause('where', 'aut_administrativa', $value);
+        });
+
 
         
 
