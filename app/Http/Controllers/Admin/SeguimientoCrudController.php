@@ -49,6 +49,18 @@ class SeguimientoCrudController extends CrudController
             $this->crud->addClause('where', 'persona_id', $value);
         });
 
+        // Filtro por CÉDULA o NIT
+        $this->crud->addFilter([
+            'name'  => 'persona_cedula',
+            'type'  => 'select2',
+            'label' => 'Cédula/NIT',
+        ], function () {
+            // Retorna un array 'id' => 'cedula' para usar en el select2
+            return \App\Models\Persona::pluck('cedula_o_nit', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'persona_id', $value);
+        });
+
         // Filtro por Tipo (usa persona->tipos_id)
         $this->crud->addFilter([
             'name'  => 'tipo_id',
@@ -121,6 +133,7 @@ class SeguimientoCrudController extends CrudController
 
         $this->crud->setColumns([
             [
+                
                 'name' => 'persona_id',
                 'label' => 'Nombre',
                 'type' => 'relationship',
@@ -237,46 +250,7 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->valor_total_contrato}}'
                 ],
             ],
-            // 👇 Columna oculta: Cédula (no visible pero sí buscable)
-            [
-                'name' => 'cedula_persona',
-               
-                'type' => 'closure',
-                'function' => function($entry) {
-                    return optional($entry->persona)->cedula_o_nit ?? '-';
-                },
-            
-                // 🔎 Habilitar búsqueda por cédula
-                'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhereHas('persona', function ($q) use ($searchTerm) {
-                        $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
-                    });
-                },
-            
-                // 🔄 Permitir ordenamiento por cédula (para exportación o reportes)
-                'orderLogic' => function ($query, $column, $direction) {
-                    return $query->leftJoin('personas', 'personas.id', '=', 'seguimientos.persona_id')
-                                 ->orderBy('personas.cedula_o_nit', $direction)
-                                 ->select('seguimientos.*');
-                },
-            
-                // ⚙️ Indicamos que no debe renderizarse en la tabla
-                'visibleInTable' => false,
-                'visibleInModal' => false,
-                'visibleInExport' => true,
-                'visibleInShow' => false,
-            
-                // 🚫 Eliminamos cualquier traza visual en caso de que Backpack igual la pinte
-                'wrapper' => [
-                    'element' => 'div',
-                    'style' => 'display:none !important; visibility:hidden; width:0 !important; max-width:0 !important; overflow:hidden;',
-                ],
-            
-                // 🚫 Y además indicamos que no genere ancho de columna en DataTables
-                'escaped' => false, // evita que Backpack escape HTML
-                'priority' => -999, // lo manda al final y Backpack lo suele omitir
-            ],
-            
+          
             
         ]);
 
