@@ -82,6 +82,11 @@ class Persona extends Model
         return $this->belongsToMany(Referencia::class, 'persona_referencia', 'persona_id', 'referencia_id');
     }
 
+        public function referencia()
+    {
+        return $this->belongsTo(\App\Models\Referencia::class, 'referencia_id');
+    }
+
      public function caso()
     {
         return $this->belongsTo(Caso::class, 'caso_id');

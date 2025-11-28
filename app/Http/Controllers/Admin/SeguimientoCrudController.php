@@ -54,7 +54,19 @@ class SeguimientoCrudController extends CrudController
         }, function ($value) {
             $this->crud->addClause('where', 'persona_id', $value);
         });
-
+      // Filtro por REFERENCIA
+      $this->crud->addFilter([
+        'name'  => 'filtro_referencia',
+        'type'  => 'select2',
+            'label' => 'Referencia',
+        ], function () {
+            return \App\Models\Referencia::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->query->whereHas('persona.referencias', function ($q) use ($value) {
+                $q->where('referencia_id', $value);
+            });
+        });
+    
         // Filtro por CÉDULA o NIT
         $this->crud->addFilter([
             'name'  => 'persona_cedula',
@@ -155,6 +167,14 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->persona->nombre_contratista ?? ""}}'
                 ],
             ],
+            // [
+            //     'label'     => 'Referencias',
+            //     'type'      => 'select_multiple',
+            //     'name'      => 'persona.referencias', // relación anidada
+            //     'entity'    => 'persona.referencias',
+            //     'attribute' => 'nombre',
+            //     'model'     => \App\Models\Referencia::class,
+            // ],
             [
                 'name' => 'persona.tipo.nombre',
                 'label' => 'Tipo',
