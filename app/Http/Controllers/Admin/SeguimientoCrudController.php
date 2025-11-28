@@ -190,6 +190,7 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->persona->tipo->nombre ?? ""}}'
                 ],
             ],
+          
             [
                 'name' => 'anio',
                 'label' => 'Año',
@@ -276,7 +277,21 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->valor_total_contrato}}'
                 ],
             ],
-          
+            [
+                'name' => 'persona.cedula_o_nit',
+                'label' => 'Cédula / NIT',
+                'type' => 'relationship',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('persona', function ($q) use ($searchTerm) {
+                        $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title' => '{{$entry->persona->cedula_o_nit ?? ""}}'
+                ],
+            ],
             
         ]);
 
