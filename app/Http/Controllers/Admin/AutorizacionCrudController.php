@@ -145,50 +145,120 @@ class AutorizacionCrudController extends CrudController
         
 
 
+        // Secretaría (relación)
+        CRUD::addColumn([
+            'name' => 'secretaria_id',
+            'label' => 'Secretaría',
+            'type' => 'select',
+            'entity' => 'secretaria',
+            'model' => \App\Models\Secretaria::class,
+            'attribute' => 'convencion',
+            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                $query->orWhereHas('secretaria', function($q) use ($searchTerm) {
+                    $q->where('convencion', 'like', '%'.$searchTerm.'%');
+                });
+            },
+        ]);
 
-        CRUD::column('secretaria_id')
-            ->label('Secretaría')
-            ->entity('secretaria')
-            ->model(\App\Models\Secretaria::class)
-            ->attribute('convencion');
+        // Persona (relación)
+        CRUD::addColumn([
+            'name' => 'persona_id',
+            'label' => 'Nombre',
+            'type' => 'select',
+            'entity' => 'persona',
+            'model' => \App\Models\Persona::class,
+            'attribute' => 'nombre_contratista',
+            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                $query->orWhereHas('persona', function($q) use ($searchTerm) {
+                    $q->where('nombre_contratista', 'like', '%'.$searchTerm.'%');
+                });
+            },
+        ]);
 
-        
-
-       CRUD::column('persona_id')
-            ->label('Nombre')
-            
-            ->entity('persona')
-            ->model(\App\Models\Persona::class)
-            ->attribute('nombre_contratista');
-
-        $this->crud->addColumn([
+        // Valor total (directo en la tabla)
+        CRUD::addColumn([
             'name' => 'valor_total',
             'label' => 'Valor Total',
             'type' => 'number',
             'prefix' => '$',
             'decimals' => 2,
+            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                $query->orWhere('valor_total', 'like', '%'.$searchTerm.'%');
+            },
         ]);
 
-        $this->crud->addColumn([
+        // Aut 1
+        CRUD::addColumn([
             'name' => 'aut_despacho',
             'label' => 'Aut 1',
             'type' => 'model_function',
             'function_name' => 'getAutDespachoIcon',
-            'escaped' => false, // <--- importante
+            'escaped' => false,
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                if (stripos('Autorizado', $searchTerm) !== false) {
+                    $query->orWhere('aut_despacho', 1);
+                } elseif (stripos('No Autorizado', $searchTerm) !== false) {
+                    $query->orWhere('aut_despacho', 0);
+                }
+            },
         ]);
-        $this->crud->addColumn([
+
+        // Aut 2
+        CRUD::addColumn([
             'name' => 'aut_planeacion',
             'label' => 'Aut 2',
             'type' => 'model_function',
             'function_name' => 'getAutPlaneacionIcon',
-            'escaped' => false, // <--- importante
+            'escaped' => false,
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                if (stripos('Autorizado', $searchTerm) !== false) {
+                    $query->orWhere('aut_planeacion', 1);
+                } elseif (stripos('No Autorizado', $searchTerm) !== false) {
+                    $query->orWhere('aut_planeacion', 0);
+                }
+            },
         ]);
         $this->crud->addColumn([
+            'name' => 'estado_aprobacion',
+            'label' => 'Estado',
+            'type' => 'model_function',
+            'function_name' => 'getEstadoAprobacionShort', // función que definiremos en el modelo
+            'escaped' => false, // si quieres poner íconos HTML
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                // Buscar por el valor original o por el texto reducido
+                $query->orWhere('estado_aprobacion', 'like', '%'.$searchTerm.'%')
+                      ->orWhere(function($q) use ($searchTerm) {
+                          $map = [
+                              'mayor' => 'Mayor',
+                              'menor' => 'Menor',
+                              'sin'   => 'Sin',
+                          ];
+                          foreach ($map as $dbVal => $display) {
+                              if (stripos($display, $searchTerm) !== false) {
+                                  $q->orWhere('estado_aprobacion', $dbVal);
+                              }
+                          }
+                      });
+            },
+        ]);
+
+        // Aut 3
+        CRUD::addColumn([
             'name' => 'aut_administrativa',
             'label' => 'Aut 3',
             'type' => 'model_function',
             'function_name' => 'getAutAdministrativaIcon',
-            'escaped' => false, // <--- importante
+            'escaped' => false,
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                if (stripos('Autorizado', $searchTerm) !== false) {
+                    $query->orWhere('aut_administrativa', 1);
+                } elseif (stripos('No Autorizado', $searchTerm) !== false) {
+                    $query->orWhere('aut_administrativa', 0);
+                }
+            },
         ]);
         $this->crud->removeButtons(['create', 'show', 'delete', 'update']);
         $this->crud->addButtonFromView('line', 'update', 'end');
@@ -233,7 +303,7 @@ class AutorizacionCrudController extends CrudController
 
         return $html;
     }
-
+   
     protected function setupCreateOperation(): void
     {
         CRUD::setValidation(AutorizacionRequest::class);
@@ -347,19 +417,25 @@ class AutorizacionCrudController extends CrudController
              'attributes' => ['style'=>'background-color:#f5f5f5;cursor:not-allowed;', 'readonly' => true],
              'wrapper' => ['class' => 'form-group col-md-2 contrato-field'],
          ]);
+
+         if ($canEditPlaneacion) {
+            CRUD::addField([
+                'name'  => 'estado_aprobacion',
+                'label' => 'Estado de Aprobación',
+                'type'  => 'select2_from_array',
+                'options' => [
+                    'mayor'  => 'Mayor valor al aprobado.',
+                    'menor'  => 'Menor Valor al aprobado.',
+                    'sin'    => 'Sin Aprobación',
+                ],
+                'allows_null' => true,
+                'wrapper' => ['class' => 'form-group col-md-4'],
+            ]);
+        } else {
+            
+        }
          
-         CRUD::addField([
-            'name'  => 'estado_aprobacion',
-            'label' => 'Estado de Aprobación',
-            'type'  => 'select2_from_array',
-            'options' => [
-                'mayor'  => 'Mayor valor al aprobado.',
-                'menor'  => 'Menor Valor al aprobado.',
-                'sin'    => 'Sin Aprobación',
-            ],
-            'allows_null' => true,
-            'wrapper' => ['class' => 'form-group col-md-4'],
-        ]);
+         
 
          /**
          * -----------------------------

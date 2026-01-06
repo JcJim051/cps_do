@@ -109,4 +109,14 @@ class Autorizacion extends Model
     | MUTATORS
     |--------------------------------------------------------------------------
     */
+    public function getEstadoAprobacionShort()
+    {
+        $map = [
+            'mayor' => 'Mayor',
+            'menor' => 'Menor',
+            'sin'   => 'Sin',
+        ];
+    
+        return $map[$this->estado_aprobacion] ?? $this->estado_aprobacion;
+    }
 }
