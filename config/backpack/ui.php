@@ -76,7 +76,7 @@ return [
     'developer_name' => 'Jonathan Jimenez',
 
     // Developer website. Link in footer. Type false if you want to hide it.
-    'developer_link' => '#',
+    'developer_link' => 'https://procesos.shipper.com.co',
 
     // Show powered by Laravel Backpack in the footer? true/false
     'show_powered_by' => false,

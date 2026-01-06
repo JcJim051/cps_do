@@ -43,7 +43,17 @@ class AutorizacionCrudController extends CrudController
             $this->crud->addClause('where', 'anio', $value);
         });
         
-        
+        $this->crud->addFilter([
+            'name'  => 'estado_aprobacion',
+            'type'  => 'dropdown',
+            'label' => 'Estado de Aprobación',
+        ], [
+            'mayor' => 'Mayor valor al aprobado.',
+            'menor' => 'Menor valor al aprobado.',
+            'sin'   => 'Sin Aprobación',
+        ], function ($value) {
+            $this->crud->addClause('where', 'estado_aprobacion', $value);
+        });
         // Filtro por Secretaría (secretaria_id)
         $this->crud->addFilter([
             'name'  => 'secretaria_id',
@@ -181,7 +191,7 @@ class AutorizacionCrudController extends CrudController
             'escaped' => false, // <--- importante
         ]);
         $this->crud->removeButtons(['create', 'show', 'delete', 'update']);
-        $this->crud->addButtonFromView('line', 'update', 'update_new_tab', 'end');
+        $this->crud->addButtonFromView('line', 'update', 'end');
         
         
     }
@@ -338,6 +348,18 @@ class AutorizacionCrudController extends CrudController
              'wrapper' => ['class' => 'form-group col-md-2 contrato-field'],
          ]);
          
+         CRUD::addField([
+            'name'  => 'estado_aprobacion',
+            'label' => 'Estado de Aprobación',
+            'type'  => 'select2_from_array',
+            'options' => [
+                'mayor'  => 'Mayor valor al aprobado.',
+                'menor'  => 'Menor Valor al aprobado.',
+                'sin'    => 'Sin Aprobación',
+            ],
+            'allows_null' => true,
+            'wrapper' => ['class' => 'form-group col-md-4'],
+        ]);
 
          /**
          * -----------------------------
@@ -444,6 +466,26 @@ class AutorizacionCrudController extends CrudController
        
 
 
+    }
+
+    public function getNombreResaltadoTooltip(): string
+    {
+        $nombre = $this->persona->nombre_contratista ?? 'N/A';
+
+        if ($this->estado_aprobacion) {
+            $map = [
+                'mayor' => 'Mayor valor al aprobado.',
+                'menor' => 'Menor valor al aprobado.',
+                'sin'   => 'Sin Aprobación',
+            ];
+            $tooltip = $map[$this->estado_aprobacion] ?? $this->estado_aprobacion;
+
+            return '<span style="color:#6a0dad; font-weight:bold;" title="'.$tooltip.'" data-bs-toggle="tooltip">'
+                    . e($nombre) .
+                '</span>';
+        }
+
+        return e($nombre);
     }
 
     protected function setupUpdateOperation(): void

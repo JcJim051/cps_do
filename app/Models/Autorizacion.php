@@ -34,7 +34,7 @@ class Autorizacion extends Model
     protected $fillable = [
         'persona_id', 'secretaria_id', 'gerencia_id',
         'aut_despacho', 'aut_planeacion', 'aut_administrativa',
-        'fecha_aut_despacho', 'fecha_aut_planeacion', 'fecha_aut_administrativa',
+        'fecha_aut_despacho', 'fecha_aut_planeacion', 'fecha_aut_administrativa','estado_aprobacion',
     ];
     // protected $fillable = [];
     // protected $hidden = [];
