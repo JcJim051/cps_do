@@ -119,4 +119,34 @@ class Autorizacion extends Model
     
         return $map[$this->estado_aprobacion] ?? $this->estado_aprobacion;
     }
+    public function getNombreResaltadoTooltip(): string
+    {
+        $nombre = $this->persona->nombre_contratista ?? 'N/A';
+
+        if ($this->estado_aprobacion !== null) {
+            $map = [
+                'mayor' => 'Mayor valor al aprobado',
+                'menor' => 'Menor valor al aprobado',
+                'sin'   => 'Sin aprobación',
+            ];
+
+            $label = [
+                'mayor' => 'Mayor',
+                'menor' => 'Menor',
+                'sin'   => 'Sin',
+            ][$this->estado_aprobacion] ?? ucfirst($this->estado_aprobacion);
+
+            $tooltip = $map[$this->estado_aprobacion] ?? $this->estado_aprobacion;
+
+            return '<span style="color:#6a0dad; font-weight:600;" data-bs-toggle="tooltip" title="'.$tooltip.'">'
+                    .e($nombre).
+                    '</span>
+                    <span class="badge ms-1" style="background-color:#6a0dad;" data-bs-toggle="tooltip" title="'.$tooltip.'">'
+                    .$label.
+                    '</span>';
+        }
+
+        return e($nombre);
+    }
+
 }

@@ -28,6 +28,7 @@ class AutorizacionCrudController extends CrudController
     protected function setupListOperation(): void
     {
         $this->crud->addClause('where', 'tipo', 'contrato');
+        $this->crud->enableExportButtons();
         $this->crud->addFilter([
             'name'  => 'anio',
             'type'  => 'select2',
@@ -161,22 +162,28 @@ class AutorizacionCrudController extends CrudController
             },
         ]);
 
-        // Persona (relación)
+     
+
         CRUD::addColumn([
             'name' => 'persona_id',
             'label' => 'Nombre',
-            'type' => 'select',
-            'entity' => 'persona',
-            'model' => \App\Models\Persona::class,
-            'attribute' => 'nombre_contratista',
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+            'type' => 'closure',
+            'escaped' => false,
+            'function' => function ($entry) {
+                $nombre = $entry->persona->nombre_contratista ?? 'N/A';
+                if (!is_null($entry->estado_aprobacion)) {
+                    return '<span style="color:#6a0dad; font-weight:600;">'.e($nombre).'</span>';
+                }
+                return e($nombre);
+            },
             'searchLogic' => function ($query, $column, $searchTerm) {
                 $query->orWhereHas('persona', function($q) use ($searchTerm) {
                     $q->where('nombre_contratista', 'like', '%'.$searchTerm.'%');
                 });
             },
         ]);
-
+        
+        
         // Valor total (directo en la tabla)
         CRUD::addColumn([
             'name' => 'valor_total',
@@ -543,27 +550,6 @@ class AutorizacionCrudController extends CrudController
 
 
     }
-
-    public function getNombreResaltadoTooltip(): string
-    {
-        $nombre = $this->persona->nombre_contratista ?? 'N/A';
-
-        if ($this->estado_aprobacion) {
-            $map = [
-                'mayor' => 'Mayor valor al aprobado.',
-                'menor' => 'Menor valor al aprobado.',
-                'sin'   => 'Sin Aprobación',
-            ];
-            $tooltip = $map[$this->estado_aprobacion] ?? $this->estado_aprobacion;
-
-            return '<span style="color:#6a0dad; font-weight:bold;" title="'.$tooltip.'" data-bs-toggle="tooltip">'
-                    . e($nombre) .
-                '</span>';
-        }
-
-        return e($nombre);
-    }
-
     protected function setupUpdateOperation(): void
     {
         $this->setupCreateOperation();
@@ -618,5 +604,8 @@ class AutorizacionCrudController extends CrudController
 
         return $this->traitStore();
     }
+
+ 
+
 
 }

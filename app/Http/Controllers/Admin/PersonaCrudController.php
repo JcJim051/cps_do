@@ -42,7 +42,7 @@ class PersonaCrudController extends CrudController
     //------------------------------
     protected function setupListOperation(): void
     {
-        
+        $this->crud->enableExportButtons();
         $user = backpack_user();
 
 
