@@ -292,7 +292,19 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->persona->cedula_o_nit ?? ""}}'
                 ],
             ],
+            [
+                'name'  => 'persona.referencias',
+                'label' => 'Referencias',
+                'type'  => 'closure',
             
+                'function' => function ($entry) {
+                    return $entry->persona->referencias
+                        ->pluck('nombre')
+                        ->implode(', ');
+                },
+            
+                'escaped' => true,
+            ],
         ]);
 
         
