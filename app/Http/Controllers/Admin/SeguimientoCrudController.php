@@ -261,6 +261,8 @@ class SeguimientoCrudController extends CrudController
                     'style' => 'max-width:80px; text-align:center;'
                 ],
             ],
+            
+            
             [
                 'name'  => 'valor_total_contrato',
                 'label' => 'Valor Total',
@@ -305,6 +307,26 @@ class SeguimientoCrudController extends CrudController
             
                 'escaped' => true,
             ],
+            [
+                'name'  => 'secretaria',     // relación
+                'label' => 'Secretaría',
+                'type'  => 'relationship',
+            
+                'attribute' => 'nombre',     // 👈 CAMPO REAL EN secretarias
+            
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('secretaria', function ($q) use ($searchTerm) {
+                        $q->where('nombre', 'like', "%{$searchTerm}%");
+                    });
+                },
+            
+                'wrapper' => [
+                    'element' => 'div',
+                    'style'   => 'max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title'   => '{{ $entry->secretaria->nombre ?? "" }}',
+                ],
+            ],
+         
         ]);
 
         
