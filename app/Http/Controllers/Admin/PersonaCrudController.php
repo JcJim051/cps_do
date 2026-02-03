@@ -59,17 +59,17 @@ class PersonaCrudController extends CrudController
         });
         
         // Estado Persona
-        $this->crud->addFilter([
-            'name'  => 'estado_persona_id',
-            'type'  => 'select2',
-            'label' => 'Estado'
-        ], function () {
-            return \App\Models\EstadoPersona::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('whereHas', 'estadoPersona', function ($q) use ($value) {
-                $q->where('id', $value);
-            });
-        });
+        // $this->crud->addFilter([
+        //     'name'  => 'estado_persona_id',
+        //     'type'  => 'select2',
+        //     'label' => 'Estado'
+        // ], function () {
+        //     return \App\Models\EstadoPersona::pluck('nombre', 'id')->toArray();
+        // }, function ($value) {
+        //     $this->crud->addClause('whereHas', 'estadoPersona', function ($q) use ($value) {
+        //         $q->where('id', $value);
+        //     });
+        // });
         
         // Tipo
         $this->crud->addFilter([
@@ -140,26 +140,26 @@ class PersonaCrudController extends CrudController
                     $this->crud->addClause('where', 'caso_id', $value);
                 });
                 // Secretaría
-                $this->crud->addFilter([
-                    'name'  => 'secretaria_id',
-                    'type'  => 'select2',
-                    'label' => 'Secretaría'
-                ], function () {
-                    return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
-                }, function ($value) {
-                    $this->crud->addClause('where', 'secretaria_id', $value);
-                });
+                // $this->crud->addFilter([
+                //     'name'  => 'secretaria_id',
+                //     'type'  => 'select2',
+                //     'label' => 'Secretaría'
+                // ], function () {
+                //     return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
+                // }, function ($value) {
+                //     $this->crud->addClause('where', 'secretaria_id', $value);
+                // });
 
-                // Gerencia
-                $this->crud->addFilter([
-                    'name'  => 'gerencia_id',
-                    'type'  => 'select2',
-                    'label' => 'Gerencia'
-                ], function () {
-                    return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
-                }, function ($value) {
-                    $this->crud->addClause('where', 'gerencia_id', $value);
-                });
+                // // Gerencia
+                // $this->crud->addFilter([
+                //     'name'  => 'gerencia_id',
+                //     'type'  => 'select2',
+                //     'label' => 'Gerencia'
+                // ], function () {
+                //     return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
+                // }, function ($value) {
+                //     $this->crud->addClause('where', 'gerencia_id', $value);
+                // });
 
         
 
@@ -241,20 +241,20 @@ class PersonaCrudController extends CrudController
         }
     
         // NUEVO CAMPO: Estado Persona (Relación - Reemplaza 'estado')
-        CRUD::addColumn([
-            'label' => 'Estado',
-            'type' => 'select',
-            'name' => 'estado_persona_id',
-            'entity' => 'estadoPersona', // Relación definida en el modelo
-            'attribute' => 'nombre',
-            'model' => EstadoPersona::class,
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('estadoPersona', function($q) use ($searchTerm) {
-                    $q->where('nombre', 'like', '%'.$searchTerm.'%');
-                });
-            },
-        ]);
+        // CRUD::addColumn([
+        //     'label' => 'Estado',
+        //     'type' => 'select',
+        //     'name' => 'estado_persona_id',
+        //     'entity' => 'estadoPersona', // Relación definida en el modelo
+        //     'attribute' => 'nombre',
+        //     'model' => EstadoPersona::class,
+        //     'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+        //     'searchLogic' => function ($query, $column, $searchTerm) {
+        //         $query->orWhereHas('estadoPersona', function($q) use ($searchTerm) {
+        //             $q->where('nombre', 'like', '%'.$searchTerm.'%');
+        //         });
+        //     },
+        // ]);
 
         // NUEVO CAMPO: Tipo (Relación)
         CRUD::addColumn([
@@ -304,20 +304,20 @@ class PersonaCrudController extends CrudController
         ]);
 
         // Secretaría (usamos la relación)
-        CRUD::addColumn([
-            'label' => 'Secretaría',
-            'type' => 'select',
-            'name' => 'secretaria_id',
-            'entity' => 'secretaria',
-            'attribute' => 'nombre',
-            'model' => \App\Models\Secretaria::class,
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('secretaria', function($q) use ($searchTerm) {
-                    $q->where('nombre', 'like', '%'.$searchTerm.'%');
-                });
-            },
-        ]); 
+        // CRUD::addColumn([
+        //     'label' => 'Secretaría',
+        //     'type' => 'select',
+        //     'name' => 'secretaria_id',
+        //     'entity' => 'secretaria',
+        //     'attribute' => 'nombre',
+        //     'model' => \App\Models\Secretaria::class,
+        //     'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+        //     'searchLogic' => function ($query, $column, $searchTerm) {
+        //         $query->orWhereHas('secretaria', function($q) use ($searchTerm) {
+        //             $q->where('nombre', 'like', '%'.$searchTerm.'%');
+        //         });
+        //     },
+        // ]); 
 
         CRUD::addColumn([
             'name' => 'maestria',
@@ -473,17 +473,17 @@ class PersonaCrudController extends CrudController
         ]);
 
         // NUEVO CAMPO: Estado Persona (Reemplaza 'estado' y usa la relación)
-        CRUD::addField([
-            'label'     => "Estado de la Persona",
-            'type'      => 'select2',
-            'name'      => 'estado_persona_id',
-            'entity'    => 'estadoPersona',
-            'attribute' => 'nombre',
-            'model'     => EstadoPersona::class,
-            'wrapper'   => ['class' => 'form-group col-md-4'],
-            'allows_null' => true,
-            'default' => EstadoPersona::first()->id ?? null,
-        ]);
+        // CRUD::addField([
+        //     'label'     => "Estado de la Persona",
+        //     'type'      => 'select2',
+        //     'name'      => 'estado_persona_id',
+        //     'entity'    => 'estadoPersona',
+        //     'attribute' => 'nombre',
+        //     'model'     => EstadoPersona::class,
+        //     'wrapper'   => ['class' => 'form-group col-md-4'],
+        //     'allows_null' => true,
+        //     'default' => EstadoPersona::first()->id ?? null,
+        // ]);
     
         // --- FILA 3: Nivel Académico y Formación ---
         CRUD::addField([
@@ -527,28 +527,28 @@ class PersonaCrudController extends CrudController
             ->wrapper(['class' => 'form-group col-md-4']);
     
         // --- FILA 5: Secretaría y Gerencia ---
-            // --- FILA 5: Secretaría ---
-            CRUD::addField([
-                'name' => 'secretaria_id',
-                'label' => 'Secretaría',
-                'type' => 'select',
-                'entity' => 'secretaria',
-                'attribute' => 'nombre',
-                'model' => \App\Models\Secretaria::class,
-                'wrapper' => ['class' => 'form-group col-md-4'],
-                'allows_null' => true,
-            ]);
+            // // --- FILA 5: Secretaría ---
+            // CRUD::addField([
+            //     'name' => 'secretaria_id',
+            //     'label' => 'Secretaría',
+            //     'type' => 'select',
+            //     'entity' => 'secretaria',
+            //     'attribute' => 'nombre',
+            //     'model' => \App\Models\Secretaria::class,
+            //     'wrapper' => ['class' => 'form-group col-md-4'],
+            //     'allows_null' => true,
+            // ]);
         
-            CRUD::addField([
-                'name' => 'gerencia_id',
-                'label' => 'Gerencia',
-                'type' => 'select2',
-                'entity' => 'gerencia',
-                'attribute' => 'nombre',
-                'model' => \App\Models\Gerencia::class,
-                'wrapper' => ['class' => 'form-group col-md-4'],
-                'allows_null' => true,
-            ]);
+            // CRUD::addField([
+            //     'name' => 'gerencia_id',
+            //     'label' => 'Gerencia',
+            //     'type' => 'select2',
+            //     'entity' => 'gerencia',
+            //     'attribute' => 'nombre',
+            //     'model' => \App\Models\Gerencia::class,
+            //     'wrapper' => ['class' => 'form-group col-md-4'],
+            //     'allows_null' => true,
+            // ]);
         
         CRUD::addField([
             'name'  => 'filtrado_js',

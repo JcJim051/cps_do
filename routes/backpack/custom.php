@@ -49,7 +49,7 @@ Route::group([
     
     
     Route::crud('autorizacion', 'AutorizacionCrudController');
-   
+    Route::crud('programas', 'ProgramasCrudController');
 }); // this should be the absolute last line of this file
 
 /**

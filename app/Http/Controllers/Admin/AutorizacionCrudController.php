@@ -23,6 +23,12 @@ class AutorizacionCrudController extends CrudController
         CRUD::setEntityNameStrings('Autorización', 'Autorizaciones');
 
         $this->middleware(['role:administrativa,bancos,diana,admin']);
+        $user = backpack_user();
+
+        // 🚫 Bloquear rol PROGRAMAS (8)
+        if ($user->role_id == 8) {
+            abort(403, 'No tienes permisos para acceder a este módulo');
+        }
     }
 
     protected function setupListOperation(): void
