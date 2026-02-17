@@ -25,6 +25,7 @@ class SeguimientoTemplateExport implements WithMultipleSheets
             {
                 // 🚨 CRÍTICO: Usamos 'cedula_o_nit' en lugar de 'persona_id' para la importación
                 return [
+                    'id',
                     'cedula_o_nit',
                     'tipo',
                     'secretaria_id',

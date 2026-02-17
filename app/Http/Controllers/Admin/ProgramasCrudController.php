@@ -44,7 +44,7 @@ class ProgramasCrudController extends CrudController
         // ✏️ PROGRAMAS (8) → crear y editar
         if (in_array($user->role_id, [8, 1])) {
             $this->crud->allowAccess(['list', 'show', 'create', 'update', 'delete']);
-         
+            $this->crud->denyAccess(['delete']);
             return;
         }
 

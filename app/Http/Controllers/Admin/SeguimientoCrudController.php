@@ -175,22 +175,33 @@ class SeguimientoCrudController extends CrudController
             //     'attribute' => 'nombre',
             //     'model'     => \App\Models\Referencia::class,
             // ],
+            // [
+            //     'name' => 'persona.tipo.nombre',
+            //     'label' => 'Tipo',
+            //     'type' => 'relationship',
+            //     'searchLogic' => function ($query, $column, $searchTerm) {
+            //         $query->orWhereHas('persona.tipo', function ($q) use ($searchTerm) {
+            //             $q->where('nombre', 'like', "%{$searchTerm}%");
+            //         });
+            //     },
+            //     'wrapper' => [
+            //         'element' => 'div',
+            //         'style' => 'max-width:90px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+            //         'title' => '{{$entry->persona->tipo->nombre ?? ""}}'
+            //     ],
+            // ],
             [
-                'name' => 'persona.tipo.nombre',
-                'label' => 'Tipo',
-                'type' => 'relationship',
+                'name' => 'numero_contrato',
+                'label' => 'Cto',
+                'type' => 'text',
                 'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhereHas('persona.tipo', function ($q) use ($searchTerm) {
-                        $q->where('nombre', 'like', "%{$searchTerm}%");
-                    });
+                    $query->orWhere('numero_contrato', 'like', "%{$searchTerm}%");
                 },
                 'wrapper' => [
                     'element' => 'div',
-                    'style' => 'max-width:90px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
-                    'title' => '{{$entry->persona->tipo->nombre ?? ""}}'
+                    'style' => 'max-width:60px; text-align:center;'
                 ],
             ],
-          
             [
                 'name' => 'anio',
                 'label' => 'Año',

@@ -18,6 +18,7 @@ class SeguimientoExport implements FromCollection, WithHeadings
     {
         return collect($this->entries)->map(function ($s) {
             return [
+                'id'                          => $s->id ?? null,
                 'cedula_o_nit'                => $s->persona->cedula_o_nit ?? null,
                 'tipo'                        => $s->tipo,
                 'secretaria_id'               => $s->secretaria_id,
@@ -54,6 +55,7 @@ class SeguimientoExport implements FromCollection, WithHeadings
     public function headings(): array
     {
         return [
+            'id',
             'cedula_o_nit',
             'tipo',
             'secretaria_id',

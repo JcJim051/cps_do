@@ -20,6 +20,10 @@
             'fecha_aut_despacho' => 'date',
             'fecha_aut_planeacion' => 'date',
             'fecha_aut_administrativa' => 'date',
+            'fecha_acta_inicio' => 'date',
+            'fecha_finalizacion' => 'date',
+            'fecha_acta_inicio_adicion' => 'date',
+            'fecha_finalizacion_adicion' => 'date',
         ];
         protected $fillable = [
             'persona_id',
@@ -56,47 +60,73 @@
             'fuente_id'
         ];
     
+        protected bool $skipAutoCalculation = false;
+
+        public function skipAutoCalculation(bool $value = true): self
+        {
+            $this->skipAutoCalculation = $value;
+            return $this;
+        }
+    
         protected static function booted()
         {
             static::saving(function ($seguimiento) {
-                // Solo aplica si es un contrato
-                if ($seguimiento->tipo === 'contrato') {
-                    // --- Cálculo tiempo ejecución contrato ---
-                    if ($seguimiento->fecha_acta_inicio && $seguimiento->fecha_finalizacion) {
-                        $inicio = Carbon::parse($seguimiento->fecha_acta_inicio);
-                        $fin = Carbon::parse($seguimiento->fecha_finalizacion);
-                        $seguimiento->tiempo_ejecucion_dias = $inicio->diffInDays($fin);
-                    }
     
-                    // --- Cálculo tiempo ejecución adición ---
-                    if ($seguimiento->adicion === 'SI' 
-                        && $seguimiento->fecha_acta_inicio_adicion 
-                        && $seguimiento->fecha_finalizacion_adicion) {
-                        
-                        $inicioAd = Carbon::parse($seguimiento->fecha_acta_inicio_adicion);
-                        $finAd = Carbon::parse($seguimiento->fecha_finalizacion_adicion);
-                        $seguimiento->tiempo_ejecucion_dias_adicion = $inicioAd->diffInDays($finAd);
-                    } else {
-                        // si no tiene adición, forzamos a 0
-                        $seguimiento->tiempo_ejecucion_dias_adicion = 0;
-                        $seguimiento->valor_adicion = 0;
-                    }
-    
-                    // --- Cálculo total días ---
-                    $seguimiento->tiempo_total_ejecucion_dias =
-                        (int) ($seguimiento->tiempo_ejecucion_dias ?? 0) +
-                        (int) ($seguimiento->tiempo_ejecucion_dias_adicion ?? 0);
-    
-                    // --- Cálculo valor total contrato ---
-                    $seguimiento->valor_total_contrato =
-                        (float) ($seguimiento->valor_total ?? 0) +
-                        (float) ($seguimiento->valor_adicion ?? 0);
-    
-                    // --- Si no tiene adición, default "NO" ---
-                    if (!$seguimiento->adicion) {
-                        $seguimiento->adicion = 'NO';
-                    }
+                // 🚫 Excel manda → no tocar nada
+                if ($seguimiento->skipAutoCalculation) {
+                    return;
                 }
+    
+                if ($seguimiento->tipo !== 'contrato') {
+                    return;
+                }
+    
+                // --- tiempo ejecución contrato ---
+                if (
+                    $seguimiento->fecha_acta_inicio &&
+                    $seguimiento->fecha_finalizacion &&
+                    $seguimiento->tiempo_ejecucion_dias === null
+                ) {
+                    $inicio = Carbon::parse($seguimiento->fecha_acta_inicio);
+                    $fin = Carbon::parse($seguimiento->fecha_finalizacion);
+                    $seguimiento->tiempo_ejecucion_dias = $inicio->diffInDays($fin);
+                }
+    
+                // --- Adición ---
+                // --- Adición ---
+                if ($seguimiento->adicion === 'SI') {
+
+                // calcular solo si Excel NO mandó días
+                if (
+                $seguimiento->fecha_acta_inicio_adicion &&
+                $seguimiento->fecha_finalizacion_adicion &&
+                $seguimiento->tiempo_ejecucion_dias_adicion === null
+                ) {
+                $inicioAd = Carbon::parse($seguimiento->fecha_acta_inicio_adicion);
+                $finAd = Carbon::parse($seguimiento->fecha_finalizacion_adicion);
+                $seguimiento->tiempo_ejecucion_dias_adicion = $inicioAd->diffInDays($finAd);
+                }
+
+                } else {
+
+                // ⚠️ solo limpiar si Excel NO mandó nada
+                if ($seguimiento->fecha_acta_inicio_adicion === null) {
+                $seguimiento->fecha_finalizacion_adicion = null;
+                $seguimiento->tiempo_ejecucion_dias_adicion = 0;
+                $seguimiento->valor_adicion = 0;
+                }
+                }
+
+    
+                // --- total días ---
+                $seguimiento->tiempo_total_ejecucion_dias =
+                    (int) ($seguimiento->tiempo_ejecucion_dias ?? 0) +
+                    (int) ($seguimiento->tiempo_ejecucion_dias_adicion ?? 0);
+    
+                // --- valor total ---
+                $seguimiento->valor_total_contrato =
+                    (float) ($seguimiento->valor_total ?? 0) +
+                    (float) ($seguimiento->valor_adicion ?? 0);
             });
         }
     
