@@ -177,14 +177,6 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->persona->nombre_contratista ?? ""}}'
                 ],
             ],
-            [
-                'name' => 'ejercicio_politico_id',
-                'label' => 'Campaña',
-                'type' => 'select',
-                'entity' => 'ejercicioPolitico',
-                'model' => \App\Models\EjercicioPolitico::class,
-                'attribute' => 'nombre',
-            ],
             // [
             //     'label'     => 'Referencias',
             //     'type'      => 'select_multiple',
