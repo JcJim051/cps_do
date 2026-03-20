@@ -29,11 +29,16 @@ class AutorizacionCrudController extends CrudController
         if ($user->role_id == 8) {
             abort(403, 'No tienes permisos para acceder a este módulo');
         }
+
+        if ($user && $user->hasAnyRole(['coordinador','coordinador_comite'])) {
+            abort(403, 'No tienes permisos para acceder a este módulo');
+        }
     }
 
     protected function setupListOperation(): void
     {
         $this->crud->addClause('where', 'tipo', 'contrato');
+        $this->crud->addClause('with', ['persona', 'secretaria', 'gerencia', 'fuente']);
         $this->crud->enableExportButtons();
         $this->crud->addFilter([
             'name'  => 'anio',
@@ -86,11 +91,13 @@ class AutorizacionCrudController extends CrudController
         // Filtro por Persona (persona_id)
         $this->crud->addFilter([
             'name'  => 'persona_id',
-            'type'  => 'select2',
-            'label' => 'Persona'
-        ], function () {
-            return \App\Models\Persona::pluck('nombre_contratista', 'id')->toArray();
-        }, function ($value) {
+            'type'  => 'select2_ajax',
+            'label' => 'Persona',
+            'placeholder' => 'Buscar persona...',
+            'minimum_input_length' => 2,
+            'select_attribute' => 'display_name',
+            'select_key' => 'id',
+        ], backpack_url('autorizacion/fetch-persona'), function ($value) {
             $this->crud->addClause('where', 'persona_id', $value);
         });
 
@@ -176,7 +183,7 @@ class AutorizacionCrudController extends CrudController
             'type' => 'closure',
             'escaped' => false,
             'function' => function ($entry) {
-                $nombre = $entry->persona->nombre_contratista ?? 'N/A';
+                $nombre = optional($entry->persona)->nombre_contratista ?? 'N/A';
                 if (!is_null($entry->estado_aprobacion)) {
                     return '<span style="color:#6a0dad; font-weight:600;">'.e($nombre).'</span>';
                 }
@@ -219,12 +226,12 @@ class AutorizacionCrudController extends CrudController
             },
         ]);
 
-        // Aut 2
+        // Aut 2 (switch en list para rol bancos)
         CRUD::addColumn([
             'name' => 'aut_planeacion',
             'label' => 'Aut 2',
-            'type' => 'model_function',
-            'function_name' => 'getAutPlaneacionIcon',
+            'type' => 'view',
+            'view' => 'vendor.backpack.crud.columns.aut_planeacion_toggle',
             'escaped' => false,
             'searchLogic' => function ($query, $column, $searchTerm) {
                 if (stripos('Autorizado', $searchTerm) !== false) {
@@ -237,9 +244,9 @@ class AutorizacionCrudController extends CrudController
         $this->crud->addColumn([
             'name' => 'estado_aprobacion',
             'label' => 'Estado',
-            'type' => 'model_function',
-            'function_name' => 'getEstadoAprobacionShort', // función que definiremos en el modelo
-            'escaped' => false, // si quieres poner íconos HTML
+            'type' => 'view',
+            'view' => 'vendor.backpack.crud.columns.estado_aprobacion_select',
+            'escaped' => false,
             'searchLogic' => function ($query, $column, $searchTerm) {
                 // Buscar por el valor original o por el texto reducido
                 $query->orWhere('estado_aprobacion', 'like', '%'.$searchTerm.'%')
@@ -274,7 +281,7 @@ class AutorizacionCrudController extends CrudController
             },
         ]);
         $this->crud->removeButtons(['create', 'show', 'delete', 'update']);
-        $this->crud->addButtonFromView('line', 'update', 'end');
+        $this->crud->addButtonFromView('line', 'update', 'update_new_tab');
         
         
     }
@@ -590,6 +597,64 @@ class AutorizacionCrudController extends CrudController
         }
 
         return $this->traitUpdate();
+    }
+
+    public function updateEstadoAprobacion(Request $request, $id)
+    {
+        $user = backpack_user();
+        if (!$user || !$user->hasAnyRole(['bancos','diana','admin'])) {
+            abort(403, 'No tienes permisos para actualizar este estado');
+        }
+
+        $value = $request->input('value');
+        $allowed = ['mayor', 'menor', 'sin', null, ''];
+        if (!in_array($value, $allowed, true)) {
+            abort(422, 'Estado inválido');
+        }
+
+        $entry = \App\Models\Autorizacion::findOrFail($id);
+        $entry->estado_aprobacion = $value === '' ? null : $value;
+        $entry->save();
+
+        return redirect()->back();
+    }
+
+    public function fetchPersonaFilter(Request $request)
+    {
+        $term = $request->input('q');
+
+        $query = \App\Models\Persona::query()
+            ->selectRaw("id, CONCAT(nombre_contratista, ' - ', COALESCE(cedula_o_nit,'')) as display_name");
+
+        if ($term) {
+            $query->where(function ($q) use ($term) {
+                $q->where('nombre_contratista', 'like', "%{$term}%")
+                  ->orWhere('cedula_o_nit', 'like', "%{$term}%");
+            });
+        }
+
+        return $query->orderBy('nombre_contratista')->paginate(15);
+    }
+
+    public function togglePlaneacion(Request $request, $id)
+    {
+        $user = backpack_user();
+        if (!$user || !$user->hasRole('bancos')) {
+            abort(403, 'No tienes permisos para actualizar esta autorización');
+        }
+
+        $entry = \App\Models\Autorizacion::findOrFail($id);
+
+        $value = $request->boolean('value');
+        $entry->aut_planeacion = $value;
+
+        if ($value && empty($entry->fecha_aut_planeacion)) {
+            $entry->fecha_aut_planeacion = Carbon::now()->toDateString();
+        }
+
+        $entry->save();
+
+        return redirect()->back();
     }
     public function store()
     {

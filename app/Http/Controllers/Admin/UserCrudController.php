@@ -62,6 +62,12 @@ class UserCrudController extends CrudController
 
         CRUD::field('name')->label('Nombre');
         CRUD::field('email')->label('Correo electrónico');
+        CRUD::addField([
+            'name' => 'password',
+            'label' => 'Contraseña',
+            'type' => 'password',
+            'wrapper' => ['class' => 'form-group col-md-6'],
+        ]);
 
         // Checklist de roles
         CRUD::addField([
@@ -83,6 +89,7 @@ class UserCrudController extends CrudController
             'model' => Referencia::class,
             'attribute' => 'nombre',
             'allows_null' => true,
+            'wrapper' => ['class' => 'form-group col-md-6 js-referencia-wrapper'],
         ]);
 
         CRUD::addField([
@@ -117,7 +124,10 @@ class UserCrudController extends CrudController
                 document.addEventListener("DOMContentLoaded", function() {
                     const secretaria = document.querySelector("[name=secretaria_id]");
                     const gerencia   = document.querySelector("[name=gerencia_id]");
-    
+                    const roleSelect = document.querySelector("[name=role_id]");
+                    const referenciaWrapper = document.querySelector(".js-referencia-wrapper");
+                    const referenciaSelect = document.querySelector("[name=referencia_id]");
+
                     function cargarGerencias(secretariaId) {
                         if (!secretariaId) return;
                         fetch("/admin/gerencias-por-secretaria/" + secretariaId)
@@ -141,6 +151,19 @@ class UserCrudController extends CrudController
                     if (secretaria?.value) {
                         cargarGerencias(secretaria.value);
                     }
+
+                    function toggleReferencia() {
+                        if (!roleSelect || !referenciaWrapper) return;
+                        const selectedText = roleSelect.options[roleSelect.selectedIndex]?.text?.toLowerCase() || "";
+                        const isCoordinador = selectedText.includes("coordinador");
+                        referenciaWrapper.style.display = isCoordinador ? "block" : "none";
+                        if (!isCoordinador && referenciaSelect) {
+                            referenciaSelect.value = "";
+                        }
+                    }
+
+                    roleSelect?.addEventListener("change", toggleReferencia);
+                    toggleReferencia();
                 });
             </script>',
         ]);

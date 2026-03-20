@@ -54,6 +54,16 @@ class SeguimientoCrudController extends CrudController
         }, function ($value) {
             $this->crud->addClause('where', 'persona_id', $value);
         });
+
+        $this->crud->addFilter([
+            'name'  => 'ejercicio_politico_id',
+            'type'  => 'select2',
+            'label' => 'Campaña'
+        ], function () {
+            return \App\Models\EjercicioPolitico::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'ejercicio_politico_id', $value);
+        });
       // Filtro por REFERENCIA
       $this->crud->addFilter([
         'name'  => 'filtro_referencia',
@@ -166,6 +176,14 @@ class SeguimientoCrudController extends CrudController
                     'style' => 'max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
                     'title' => '{{$entry->persona->nombre_contratista ?? ""}}'
                 ],
+            ],
+            [
+                'name' => 'ejercicio_politico_id',
+                'label' => 'Campaña',
+                'type' => 'select',
+                'entity' => 'ejercicioPolitico',
+                'model' => \App\Models\EjercicioPolitico::class,
+                'attribute' => 'nombre',
             ],
             // [
             //     'label'     => 'Referencias',
@@ -360,6 +378,19 @@ class SeguimientoCrudController extends CrudController
             'model' => 'App\\Models\\Persona',
             'attribute' => 'nombre_contratista',
             'wrapper' => ['class' => 'form-group col-md-6'],
+        ]);
+
+        $defaultCampaign = \App\Models\EjercicioPolitico::orderBy('id', 'desc')->value('id');
+        CRUD::addField([
+            'name' => 'ejercicio_politico_id',
+            'label' => 'Campaña',
+            'type' => 'select2',
+            'entity' => 'ejercicioPolitico',
+            'model' => \App\Models\EjercicioPolitico::class,
+            'attribute' => 'nombre',
+            'wrapper' => ['class' => 'form-group col-md-6'],
+            'allows_null' => false,
+            'default' => $defaultCampaign,
         ]);
 
         // Tipo

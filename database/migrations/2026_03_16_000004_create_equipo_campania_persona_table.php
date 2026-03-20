@@ -1,0 +1,33 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('equipo_campania_persona', function (Blueprint $table) {
+            $table->unsignedBigInteger('equipo_campania_id');
+            $table->unsignedBigInteger('persona_id');
+
+            $table->foreign('equipo_campania_id')
+                ->references('id')
+                ->on('equipos_campania')
+                ->onDelete('cascade');
+
+            $table->foreign('persona_id')
+                ->references('id')
+                ->on('personas')
+                ->onDelete('cascade');
+
+            $table->primary(['equipo_campania_id', 'persona_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('equipo_campania_persona');
+    }
+};

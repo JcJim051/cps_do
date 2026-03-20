@@ -41,6 +41,8 @@ class Persona extends Model
         'no_tocar',
         'secretaria_id',
         'gerencia_id',
+        'ejercicio_politico_origen_id',
+        'created_by_user_id',
     ];
     // protected $hidden = [];
 
@@ -80,6 +82,26 @@ class Persona extends Model
     {
         // Usa 'referencias' en plural. Laravel buscará la tabla 'persona_referencia' por convención.
         return $this->belongsToMany(Referencia::class, 'persona_referencia', 'persona_id', 'referencia_id');
+    }
+
+    public function ejerciciosPoliticos()
+    {
+        return $this->belongsToMany(EjercicioPolitico::class, 'ejercicio_politico_persona', 'persona_id', 'ejercicio_politico_id');
+    }
+
+    public function equiposCampania()
+    {
+        return $this->belongsToMany(EquipoCampania::class, 'equipo_campania_persona', 'persona_id', 'equipo_campania_id');
+    }
+
+    public function ejercicioPoliticoOrigen()
+    {
+        return $this->belongsTo(EjercicioPolitico::class, 'ejercicio_politico_origen_id');
+    }
+
+    public function creadoPor()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
         public function referencia()
@@ -127,6 +149,17 @@ class Persona extends Model
             }
             if (!empty($model->documento_pdf)) {
                 Storage::disk('public')->delete($model->documento_pdf);
+            }
+        });
+
+        static::saved(function (self $model) {
+            $user = backpack_user();
+            if ($user && !$user->hasAnyRole(['admin', 'diana']) && $user->referencia_id) {
+                $model->referencias()->syncWithoutDetaching([$user->referencia_id]);
+                if (empty($model->referencia_id)) {
+                    $model->referencia_id = $user->referencia_id;
+                    $model->saveQuietly();
+                }
             }
         });
     }

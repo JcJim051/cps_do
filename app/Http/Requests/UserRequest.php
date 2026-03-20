@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Spatie\Permission\Models\Role;
 
 class UserRequest extends FormRequest
 {
@@ -24,9 +25,23 @@ class UserRequest extends FormRequest
      */
     public function rules()
     {
-        return [
-            // 'name' => 'required|min:5|max:255'
-        ];
+        $rules = [];
+
+        if ($this->isMethod('post')) {
+            $rules['password'] = 'required|string|min:6';
+        } else {
+            $rules['password'] = 'nullable|string|min:6';
+        }
+
+        $roleId = $this->input('role_id');
+        if ($roleId) {
+            $roleName = Role::where('id', $roleId)->value('name');
+            if (in_array($roleName, ['coordinador', 'coordinador_comite'], true)) {
+                $rules['referencia_id'] = 'required|exists:referencias,id';
+            }
+        }
+
+        return $rules;
     }
 
     /**

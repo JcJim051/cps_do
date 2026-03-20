@@ -33,6 +33,7 @@ Route::group([
         Route::crud('role', 'RoleCrudController');
         Route::crud('permission', 'PermissionCrudController');
         Route::get('indicadores', [\App\Http\Controllers\Admin\IndicadoresController::class, 'index'])->name('admin.indicadores');
+        Route::crud('ejercicio-politico', 'EjercicioPoliticoCrudController');
 
     });
 
@@ -49,7 +50,23 @@ Route::group([
     
     
     Route::crud('autorizacion', 'AutorizacionCrudController');
+    Route::get('autorizacion/fetch-persona', 'AutorizacionCrudController@fetchPersonaFilter')
+        ->name('autorizacion.fetchPersonaFilter');
+    Route::post('autorizacion/{id}/estado-aprobacion', 'AutorizacionCrudController@updateEstadoAprobacion')
+        ->name('autorizacion.updateEstadoAprobacion');
+    Route::post('autorizacion/{id}/toggle-planeacion', 'AutorizacionCrudController@togglePlaneacion')
+        ->name('autorizacion.togglePlaneacion');
     Route::crud('programas', 'ProgramasCrudController');
+    Route::crud('equipo-campania', 'EquipoCampaniaCrudController');
+
+    Route::group(['middleware' => ['role:coordinador,coordinador_comite']], function () {
+        Route::get('reportar-equipo', 'ReportarEquipoController@index')->name('reportar-equipo.index');
+        Route::get('reportar-equipo/reportar', 'ReportarEquipoController@create')->name('reportar-equipo.create');
+        Route::post('reportar-equipo/buscar', 'ReportarEquipoController@buscar')->name('reportar-equipo.buscar');
+        Route::post('reportar-equipo', 'ReportarEquipoController@store')->name('reportar-equipo.store');
+        Route::post('reportar-equipo/remove', 'ReportarEquipoController@remove')->name('reportar-equipo.remove');
+        Route::post('reportar-equipo/delete-persona', 'ReportarEquipoController@deletePersona')->name('reportar-equipo.deletePersona');
+    });
 }); // this should be the absolute last line of this file
 
 /**

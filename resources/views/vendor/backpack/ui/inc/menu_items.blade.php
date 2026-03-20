@@ -44,8 +44,22 @@
 <x-backpack::menu-item title="Seguimientos" icon="la la-user-edit" :link="backpack_url('seguimiento')" />
 @endif
 
-{{-- Autorizaciones (NO role 8) --}}
-@if(!backpack_user()->hasRole('programas'))
+
+{{-- Ejercicios políticos (solo admin/diana) --}}
+@if(backpack_user()->hasAnyRole(['admin','diana']))
+<x-backpack::menu-dropdown title="Ejercicios Políticos" icon="la la-flag-checkered">
+    <x-backpack::menu-dropdown-item title="Campañas" icon="la la-flag" :link="backpack_url('ejercicio-politico')" />
+    <x-backpack::menu-dropdown-item title="Equipos" icon="la la-users" :link="backpack_url('equipo-campania')" />
+</x-backpack::menu-dropdown>
+@endif
+
+{{-- Reportar equipo (coordinadores) --}}
+@if(backpack_user()->hasAnyRole(['coordinador','coordinador_comite']))
+<x-backpack::menu-item title="Reportar Equipo" icon="la la-clipboard-list" :link="backpack_url('reportar-equipo')" />
+@endif
+
+{{-- Autorizaciones (NO programas ni coordinador) --}}
+@if(!backpack_user()->hasAnyRole(['programas','coordinador','coordinador_comite']))
 <x-backpack::menu-item
     title="Autorizaciones"
     icon="la la-check-circle"

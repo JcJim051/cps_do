@@ -27,6 +27,7 @@ class SeguimientoTemplateExport implements WithMultipleSheets
                 return [
                     'id',
                     'cedula_o_nit',
+                    'ejercicio_politico_id',
                     'tipo',
                     'secretaria_id',
                     'gerencia_id',
@@ -80,6 +81,7 @@ class SeguimientoTemplateExport implements WithMultipleSheets
             ['table' => 'estados', 'title' => 'C_Estados'], // Se usa para estado_id y estado_contrato_id
             ['table' => 'evaluaciones', 'title' => 'C_Evaluaciones'],
             ['table' => 'niveles_academicos', 'title' => 'C_Nivel_Academico'],
+            ['table' => 'ejercicios_politicos', 'title' => 'C_Campanias'],
         ];
 
         foreach ($catalogos as $catalogo) {

@@ -27,6 +27,7 @@
         ];
         protected $fillable = [
             'persona_id',
+            'ejercicio_politico_id',
             'tipo',
             'secretaria_id',
             'gerencia_id',
@@ -135,6 +136,11 @@
         public function persona()
         {
             return $this->belongsTo(Persona::class);
+        }
+
+        public function ejercicioPolitico()
+        {
+            return $this->belongsTo(EjercicioPolitico::class, 'ejercicio_politico_id');
         }
         
         public function evaluacion()

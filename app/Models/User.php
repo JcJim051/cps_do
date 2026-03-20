@@ -77,6 +77,11 @@ class User extends Authenticatable
         return $this->belongsTo(\App\Models\Gerencia::class, 'gerencia_id');
     }
 
+    public function equiposCampaniaCoordinados()
+    {
+        return $this->hasMany(\App\Models\EquipoCampania::class, 'coordinador_user_id');
+    }
+
     protected static function booted()
     {
         static::retrieved(function ($user) {

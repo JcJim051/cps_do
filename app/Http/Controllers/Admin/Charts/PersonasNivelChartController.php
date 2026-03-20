@@ -6,6 +6,7 @@ use App\Models\Persona;
 use Backpack\CRUD\app\Http\Controllers\ChartController;
 use ConsoleTVs\Charts\Classes\Chartjs\Chart;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class PersonasNivelChartController extends ChartController
 {
@@ -13,12 +14,16 @@ class PersonasNivelChartController extends ChartController
     {
         $this->chart = new Chart();
 
-        $data = Persona::select('nivel_academico_id', DB::raw('COUNT(*) as total'))
-            ->groupBy('nivel_academico_id')
-            ->with('nivelAcademico')
-            ->get();
+        $data = Cache::remember('indicadores.chart_personas_nivel', 600, function () {
+            return Persona::select('nivel_academico_id', DB::raw('COUNT(*) as total'))
+                ->groupBy('nivel_academico_id')
+                ->with('nivelAcademico')
+                ->get();
+        });
 
-        $labels = $data->pluck('nivelAcademico.nombre');
+        $labels = $data->map(function ($row) {
+            return optional($row->nivelAcademico)->nombre ?? 'Sin nivel';
+        });
         $values = $data->pluck('total');
 
         $this->chart->labels($labels);

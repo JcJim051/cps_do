@@ -25,7 +25,7 @@ class SeguimientoRequest extends FormRequest
     public function rules()
     {
         return [
-            // 'name' => 'required|min:5|max:255'
+            'ejercicio_politico_id' => 'required|exists:ejercicios_politicos,id',
         ];
     }
 

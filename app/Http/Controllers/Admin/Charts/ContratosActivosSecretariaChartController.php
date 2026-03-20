@@ -5,21 +5,24 @@ namespace App\Http\Controllers\Admin\Charts;
 use App\Models\Seguimiento;
 use Backpack\CRUD\app\Http\Controllers\ChartController;
 use ConsoleTVs\Charts\Classes\Chartjs\Chart;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
-class ContratosSecretariaChartController extends ChartController
+class ContratosActivosSecretariaChartController extends ChartController
 {
     public function setup()
     {
         $this->chart = new Chart();
         $year = now()->year;
 
-        $data = Cache::remember("indicadores.chart_contratos_secretaria_$year", 600, function () use ($year) {
-            return Seguimiento::select('secretaria_id', DB::raw('SUM(valor_total_contrato) as total'))
+        $data = Cache::remember("indicadores.chart_contratos_activos_secretaria_$year", 600, function () use ($year) {
+            return Seguimiento::select('secretaria_id', DB::raw('COUNT(*) as total'))
                 ->where('anio', $year)
+                ->where('estado_contrato_id', 1)
                 ->groupBy('secretaria_id')
                 ->with('secretaria')
+                ->orderByDesc('total')
+                ->limit(10)
                 ->get();
         });
 
@@ -29,7 +32,12 @@ class ContratosSecretariaChartController extends ChartController
         $values = $data->pluck('total');
 
         $this->chart->labels($labels);
-        $this->chart->dataset('Valor total contratado por Secretaría', 'pie', $values)
-            ->options(['backgroundColor' => ['#4e73df','#1cc88a','#36b9cc','#f6c23e','#e74a3b','#858796']]);
+        $this->chart->dataset('Contratos activos', 'bar', $values)
+            ->options(['backgroundColor' => '#1cc88a']);
+
+        $this->chart->options([
+            'responsive' => true,
+            'legend' => ['display' => false],
+        ]);
     }
 }

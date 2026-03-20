@@ -8,6 +8,7 @@ use App\Models\Referencia;
 use App\Models\NivelAcademico;
 use App\Models\EstadoPersona; // Necesario para la nueva relación
 use App\Models\Tipo; // Necesario para la nueva relación
+use App\Models\EjercicioPolitico;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use App\Exports\PeopleTemplateExport;
@@ -18,7 +19,7 @@ class PersonaCrudController extends CrudController
 {
     use \Backpack\CRUD\app\Http\Controllers\Operations\ListOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\CreateOperation;
-    use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation;
+    use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation { update as traitUpdate; edit as traitEdit; }
     use \Backpack\CRUD\app\Http\Controllers\Operations\DeleteOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
 
@@ -30,11 +31,22 @@ class PersonaCrudController extends CrudController
          // 🔒 Solo el Admin (id 1) puede borrar
          if (!backpack_user()->hasRole('admin')) {
             CRUD::denyAccess('delete');
-            // Si NO es Admin o Diana, le quitamos permisos de crear/editar
-        if (!backpack_user()->hasAnyRole(['admin', 'diana'])) {
-            $this->crud->denyAccess(['create', 'update']);
         }
+
+        $user = backpack_user();
+        if ($user && !$user->hasAnyRole(['admin', 'diana'])) {
+            $this->crud->denyAccess(['list', 'show']);
+
+            if ($user->referencia_id) {
+                $this->crud->addClause('where', function ($query) use ($user) {
+                    $query->whereHas('referencias', function ($q) use ($user) {
+                        $q->where('referencia_id', $user->referencia_id);
+                    })->orWhere('referencia_id', $user->referencia_id);
+                });
+            } else {
+                $this->crud->denyAccess(['create', 'update']);
             }
+        }
     }
 
     //------------------------------
@@ -97,6 +109,16 @@ class PersonaCrudController extends CrudController
             $this->crud->addClause('whereHas', 'referencias', function ($q) use ($value) {
                 $q->where('id', $value);
             });
+        });
+
+        $this->crud->addFilter([
+            'name'  => 'ejercicio_politico_origen_id',
+            'type'  => 'select2',
+            'label' => 'Campaña de ingreso'
+        ], function () {
+            return \App\Models\EjercicioPolitico::pluck('nombre', 'id')->toArray();
+        }, function ($value) {
+            $this->crud->addClause('where', 'ejercicio_politico_origen_id', $value);
         });
 
 
@@ -285,6 +307,18 @@ class PersonaCrudController extends CrudController
                 });
             },
         ]);
+
+        if ($user && $user->hasAnyRole(['admin', 'diana'])) {
+            CRUD::addColumn([
+                'label' => 'Campaña de ingreso',
+                'type' => 'select',
+                'name' => 'ejercicio_politico_origen_id',
+                'entity' => 'ejercicioPoliticoOrigen',
+                'attribute' => 'nombre',
+                'model' => EjercicioPolitico::class,
+                'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+            ]);
+        }
         // No Tocar (badge visual)
         CRUD::addColumn([
             'name' => 'no_tocar',
@@ -515,10 +549,18 @@ class PersonaCrudController extends CrudController
                 'pivot' => true, // Importante para relaciones Many-to-Many
             ]);
         } else {
-             // Dejamos un espacio si no tiene permiso, para mantener la grilla
-             CRUD::addField(['name' => 'placeholder_ref', 'type' => 'custom_html', 'value' => '', 'wrapper' => ['class' => 'form-group col-md-4']]);
+             CRUD::addField([
+                 'name' => 'placeholder_ref',
+                 'type' => 'custom_html',
+                 'value' => '<label class="form-label">Referencia</label><div class="text-muted">Se asigna automáticamente según tu usuario.</div>',
+                 'wrapper' => ['class' => 'form-group col-md-4'],
+             ]);
         }
-        CRUD::field('referencia_2')->label('Referencia 2')->wrapper(['class' => 'form-group col-md-4']);
+        if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
+            CRUD::field('referencia_2')->label('Referencia 2')->wrapper(['class' => 'form-group col-md-4']);
+        } else {
+            CRUD::addField(['name' => 'placeholder_ref2', 'type' => 'custom_html', 'value' => '', 'wrapper' => ['class' => 'form-group col-md-4']]);
+        }
     
         CRUD::field('caso_id')->label('Caso Especial')->type('select2')
             ->entity('caso')
@@ -601,7 +643,24 @@ class PersonaCrudController extends CrudController
         
         
 
-        CRUD::field('no_tocar')->label('No Tocar')->type('checkbox')->wrapper(['class' => 'form-group col-md-4']);
+        if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
+            CRUD::field('no_tocar')->label('No Tocar')->type('checkbox')->wrapper(['class' => 'form-group col-md-4']);
+        } else {
+            CRUD::addField(['name' => 'placeholder_notocar', 'type' => 'custom_html', 'value' => '', 'wrapper' => ['class' => 'form-group col-md-4']]);
+        }
+
+        $ultimoEjercicioId = EjercicioPolitico::orderBy('id', 'desc')->value('id');
+        CRUD::addField([
+            'label'     => "Campaña de ingreso",
+            'type'      => 'select2',
+            'name'      => 'ejercicio_politico_origen_id',
+            'entity'    => 'ejercicioPoliticoOrigen',
+            'attribute' => 'nombre',
+            'model'     => EjercicioPolitico::class,
+            'wrapper'   => ['class' => 'form-group col-md-4'],
+            'allows_null' => false,
+            'default' => $ultimoEjercicioId,
+        ]);
         
         // --- FILA 6: Archivos ---
         CRUD::addField([
@@ -631,6 +690,41 @@ class PersonaCrudController extends CrudController
     {
         $this->setupCreateOperation();
         
+    }
+
+    public function edit($id)
+    {
+        $this->authorizePersonaAccess($id);
+        return $this->traitEdit($id);
+    }
+
+    public function update()
+    {
+        $id = request()->route('id');
+        $this->authorizePersonaAccess($id);
+        return $this->traitUpdate();
+    }
+
+    protected function authorizePersonaAccess($id): void
+    {
+        $user = backpack_user();
+        if (!$user || $user->hasAnyRole(['admin', 'diana'])) {
+            return;
+        }
+
+        $persona = Persona::with('referencias')->findOrFail($id);
+        $referenciaId = $user->referencia_id;
+
+        if (!$referenciaId) {
+            abort(403);
+        }
+
+        $hasReferencia = $persona->referencia_id === $referenciaId
+            || $persona->referencias->contains('id', $referenciaId);
+
+        if (!$hasReferencia) {
+            abort(403);
+        }
     }
 
     //------------------------------
@@ -676,14 +770,14 @@ class PersonaCrudController extends CrudController
                         'Cédula/NIT' => $entry->cedula_o_nit,
                         'Celular' => $entry->celular,
                         'Género' => $entry->genero,
-                        'Vinculacion' => $entry->tipo?->nombre, 
-                        'Estado de la Persona' => $entry->estadoPersona?->nombre, 
+                        // 'Vinculacion' => $entry->tipo?->nombre, 
+                        // 'Estado de la Persona' => $entry->estadoPersona?->nombre, 
                         'Nivel Académico' => $entry->nivelAcademico?->nombre,
                         'Profesión/Técnico/Tecnólogo' => $entry->tecnico_tecnologo_profesion,
                         'Especialización' => $entry->especializacion,
                         'Maestría' => $entry->maestria,
-                        'Secretaría' => $entry->secretaria?->nombre, 
-                        'Gerencia' => $entry->gerencia?->nombre, 
+                        // 'Secretaría' => $entry->secretaria?->nombre, 
+                        // 'Gerencia' => $entry->gerencia?->nombre, 
                         'Caso especial' => $entry->caso?->nombre, 
                         
                     ];
@@ -695,7 +789,9 @@ class PersonaCrudController extends CrudController
                             ? '<div class="fw-bold">'.$referenciasNombres.'</div>'
                             : null;
                     }
-                    $campos['Referencia 2'] = $entry->referencia_2;
+                    if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
+                        $campos['Referencia 2'] = $entry->referencia_2;
+                    }
                     // Generación de las tarjetas (todas usan col-md-4 para flujo de 3 columnas en el col-md-9)
                     foreach ($campos as $label => $valor) {
                         $valorDisplay = $valor;
@@ -730,6 +826,38 @@ class PersonaCrudController extends CrudController
                     $html .= '</div>'; // Cierra el contenedor col-md-9
     
                     $html .= '</div>'; // Cierra el row principal
+                    return $html;
+                },
+                'escaped' => false,
+            ]);
+
+            $this->crud->addColumn([
+                'name'     => 'trazabilidad_campanias',
+                'label'    => 'Trazabilidad en Campañas y Equipos',
+                'type'     => 'closure',
+                'function' => function ($entry) {
+                    $equipos = $entry->equiposCampania()->with('ejercicioPolitico')->get();
+
+                    if ($equipos->isEmpty()) {
+                        return '<p class="text-muted">Sin participación registrada.</p>';
+                    }
+
+                    $porCampania = $equipos->groupBy(function ($equipo) {
+                        return $equipo->ejercicioPolitico?->nombre ?? 'Sin campaña';
+                    });
+
+                    $html = '<div class="card mt-3">';
+                    $html .= '<div class="card-header bg-secondary text-white">Campañas y Equipos</div>';
+                    $html .= '<div class="card-body p-0">';
+                    $html .= '<div class="table-responsive"><table class="table mb-0 table-striped align-middle">';
+                    $html .= '<thead class="table-light"><tr><th>Campaña</th><th>Equipo(s)</th></tr></thead><tbody>';
+
+                    foreach ($porCampania as $campania => $equiposCampania) {
+                        $equiposNombres = $equiposCampania->pluck('nombre')->unique()->implode(', ');
+                        $html .= '<tr><td>'.$campania.'</td><td>'.$equiposNombres.'</td></tr>';
+                    }
+
+                    $html .= '</tbody></table></div></div></div>';
                     return $html;
                 },
                 'escaped' => false,
