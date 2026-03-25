@@ -121,6 +121,22 @@ class PersonaCrudController extends CrudController
             $this->crud->addClause('where', 'ejercicio_politico_origen_id', $value);
         });
 
+        $this->crud->addFilter([
+            'name'  => 'prioridad_equipo',
+            'type'  => 'select2',
+            'label' => 'Priorización'
+        ], function () {
+            return [
+                1 => '1',
+                2 => '2',
+                3 => '3',
+            ];
+        }, function ($value) {
+            $this->crud->query->whereHas('equiposCampania', function ($q) use ($value) {
+                $q->where('equipo_campania_persona.priorizacion', $value);
+            });
+        });
+
 
     
         // Profesión (text) - convertimos a select2 con valores únicos existentes
@@ -837,24 +853,79 @@ class PersonaCrudController extends CrudController
                 'type'     => 'closure',
                 'function' => function ($entry) {
                     $equipos = $entry->equiposCampania()->with('ejercicioPolitico')->get();
+                    $equiposActivos = $equipos->keyBy('id');
 
-                    if ($equipos->isEmpty()) {
+                    $historial = \DB::table('equipo_campania_persona_historial')
+                        ->join('equipos_campania', 'equipos_campania.id', '=', 'equipo_campania_persona_historial.equipo_campania_id')
+                        ->leftJoin('ejercicios_politicos', 'ejercicios_politicos.id', '=', 'equipos_campania.ejercicio_politico_id')
+                        ->where('equipo_campania_persona_historial.persona_id', $entry->id)
+                        ->select([
+                            'equipos_campania.id as equipo_id',
+                            'equipos_campania.nombre as equipo_nombre',
+                            'ejercicios_politicos.id as campania_id',
+                            'ejercicios_politicos.nombre as campania_nombre',
+                        ])
+                        ->distinct()
+                        ->get();
+
+                    if ($equipos->isEmpty() && $historial->isEmpty()) {
                         return '<p class="text-muted">Sin participación registrada.</p>';
                     }
 
-                    $porCampania = $equipos->groupBy(function ($equipo) {
-                        return $equipo->ejercicioPolitico?->nombre ?? 'Sin campaña';
+                    $rows = collect();
+                    foreach ($equipos as $equipo) {
+                        $rows->push([
+                            'campania_id' => $equipo->ejercicioPolitico?->id,
+                            'campania' => $equipo->ejercicioPolitico?->nombre ?? '-',
+                            'equipo' => $equipo->nombre,
+                            'priorizacion' => $equipo->pivot->priorizacion,
+                            'estado' => 'Activo',
+                        ]);
+                    }
+                    foreach ($historial as $row) {
+                        if ($equiposActivos->has($row->equipo_id)) {
+                            continue;
+                        }
+                        $rows->push([
+                            'campania_id' => $row->campania_id,
+                            'campania' => $row->campania_nombre ?? '-',
+                            'equipo' => $row->equipo_nombre ?? '-',
+                            'priorizacion' => null,
+                            'estado' => 'Retirado',
+                        ]);
+                    }
+
+                    $tieneRetirados = $rows->contains(function ($row) {
+                        return $row['estado'] === 'Retirado';
                     });
 
                     $html = '<div class="card mt-3">';
                     $html .= '<div class="card-header bg-secondary text-white">Campañas y Equipos</div>';
                     $html .= '<div class="card-body p-0">';
                     $html .= '<div class="table-responsive"><table class="table mb-0 table-striped align-middle">';
-                    $html .= '<thead class="table-light"><tr><th>Campaña</th><th>Equipo(s)</th></tr></thead><tbody>';
+                    $html .= '<thead class="table-light"><tr><th>Campaña</th><th>Equipo</th><th>Priorización</th>';
+                    if ($tieneRetirados) {
+                        $html .= '<th>Estado</th>';
+                    }
+                    $html .= '<th>Nuevo</th></tr></thead><tbody>';
 
-                    foreach ($porCampania as $campania => $equiposCampania) {
-                        $equiposNombres = $equiposCampania->pluck('nombre')->unique()->implode(', ');
-                        $html .= '<tr><td>'.$campania.'</td><td>'.$equiposNombres.'</td></tr>';
+                    foreach ($rows as $row) {
+                        $priorizacion = $row['priorizacion'];
+                        $label = $priorizacion !== null ? (string) $priorizacion : '-';
+                        $color = $priorizacion !== null ? 'text-body fw-semibold' : 'text-muted';
+                        $estadoClass = $row['estado'] === 'Activo' ? 'text-success fw-semibold' : 'text-muted';
+                        $esNuevo = $row['campania_id'] && $entry->ejercicio_politico_origen_id == $row['campania_id'];
+                        $nuevoLabel = $esNuevo ? 'Sí' : 'No';
+                        $nuevoClass = $esNuevo ? 'text-success fw-semibold' : 'text-muted';
+                        $html .= '<tr>';
+                        $html .= '<td>'.e($row['campania']).'</td>';
+                        $html .= '<td>'.e($row['equipo']).'</td>';
+                        $html .= '<td><span class="'.$color.'">'.$label.'</span></td>';
+                        if ($tieneRetirados) {
+                            $html .= '<td><span class="'.$estadoClass.'">'.$row['estado'].'</span></td>';
+                        }
+                        $html .= '<td><span class="'.$nuevoClass.'">'.$nuevoLabel.'</span></td>';
+                        $html .= '</tr>';
                     }
 
                     $html .= '</tbody></table></div></div></div>';

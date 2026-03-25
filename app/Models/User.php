@@ -82,6 +82,11 @@ class User extends Authenticatable
         return $this->hasMany(\App\Models\EquipoCampania::class, 'coordinador_user_id');
     }
 
+    public function ejerciciosPoliticosVisibles()
+    {
+        return $this->belongsToMany(\App\Models\EjercicioPolitico::class, 'user_ejercicio_politico', 'user_id', 'ejercicio_politico_id');
+    }
+
     protected static function booted()
     {
         static::retrieved(function ($user) {

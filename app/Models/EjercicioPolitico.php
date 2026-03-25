@@ -29,4 +29,9 @@ class EjercicioPolitico extends Model
     {
         return $this->belongsToMany(Persona::class, 'ejercicio_politico_persona', 'ejercicio_politico_id', 'persona_id');
     }
+
+    public function usuariosVisibles()
+    {
+        return $this->belongsToMany(User::class, 'user_ejercicio_politico', 'ejercicio_politico_id', 'user_id');
+    }
 }

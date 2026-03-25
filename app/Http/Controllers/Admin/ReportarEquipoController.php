@@ -14,9 +14,15 @@ class ReportarEquipoController extends Controller
     public function index(Request $request)
     {
         $user = backpack_user();
-        $equipos = EquipoCampania::with('ejercicioPolitico')
-            ->where('coordinador_user_id', $user->id)
-            ->get();
+        $allowedCampaignIds = $user->ejerciciosPoliticosVisibles()->pluck('ejercicios_politicos.id');
+        $equiposQuery = EquipoCampania::with('ejercicioPolitico')
+            ->where('coordinador_user_id', $user->id);
+        if ($allowedCampaignIds->isNotEmpty()) {
+            $equiposQuery->whereIn('ejercicio_politico_id', $allowedCampaignIds);
+        } else {
+            $equiposQuery->whereRaw('1=0');
+        }
+        $equipos = $equiposQuery->get();
 
         $equipoId = $request->get('equipo_id');
         $equipoSeleccionado = $equipos->firstWhere('id', (int) $equipoId);
@@ -50,9 +56,15 @@ class ReportarEquipoController extends Controller
     public function create(Request $request)
     {
         $user = backpack_user();
-        $equipos = EquipoCampania::with('ejercicioPolitico')
-            ->where('coordinador_user_id', $user->id)
-            ->get();
+        $allowedCampaignIds = $user->ejerciciosPoliticosVisibles()->pluck('ejercicios_politicos.id');
+        $equiposQuery = EquipoCampania::with('ejercicioPolitico')
+            ->where('coordinador_user_id', $user->id);
+        if ($allowedCampaignIds->isNotEmpty()) {
+            $equiposQuery->whereIn('ejercicio_politico_id', $allowedCampaignIds);
+        } else {
+            $equiposQuery->whereRaw('1=0');
+        }
+        $equipos = $equiposQuery->get();
 
         $niveles = NivelAcademico::orderBy('nombre')->get();
 
@@ -60,7 +72,60 @@ class ReportarEquipoController extends Controller
         $cedula = session('reportar_cedula');
         $equipoId = session('reportar_equipo_id', $request->get('equipo_id'));
 
-        return view('admin.reportar_equipo.create', compact('equipos', 'niveles', 'personaData', 'cedula', 'equipoId'));
+        $isEdit = false;
+        $personaId = null;
+        return view('admin.reportar_equipo.create', compact('equipos', 'niveles', 'personaData', 'cedula', 'equipoId', 'isEdit', 'personaId'));
+    }
+
+    public function edit(Request $request)
+    {
+        $user = backpack_user();
+        $equipoId = (int) $request->get('equipo_id');
+        $personaId = (int) $request->get('persona_id');
+
+        $allowedCampaignIds = $user->ejerciciosPoliticosVisibles()->pluck('ejercicios_politicos.id');
+        $equipoQuery = EquipoCampania::with('ejercicioPolitico')
+            ->where('coordinador_user_id', $user->id);
+        if ($allowedCampaignIds->isNotEmpty()) {
+            $equipoQuery->whereIn('ejercicio_politico_id', $allowedCampaignIds);
+        } else {
+            abort(403);
+        }
+        $equipo = $equipoQuery->findOrFail($equipoId);
+
+        $persona = Persona::findOrFail($personaId);
+        $pivot = \DB::table('equipo_campania_persona')
+            ->where('equipo_campania_id', $equipoId)
+            ->where('persona_id', $personaId)
+            ->first();
+        if (!$pivot) {
+            abort(404);
+        }
+
+        $equipos = collect([$equipo]);
+        $niveles = NivelAcademico::orderBy('nombre')->get();
+
+        $personaData = array_merge(
+            $persona->only([
+                'nombre_contratista',
+                'cedula_o_nit',
+                'celular',
+                'genero',
+                'nivel_academico_id',
+                'tecnico_tecnologo_profesion',
+                'especializacion',
+                'maestria',
+                'ejercicio_politico_origen_id',
+            ]),
+            [
+                'priorizacion' => $pivot->priorizacion,
+            ]
+        );
+
+        $cedula = $persona->cedula_o_nit;
+        $isEdit = true;
+
+        return view('admin.reportar_equipo.create', compact('equipos', 'niveles', 'personaData', 'cedula', 'equipoId', 'isEdit', 'personaId'));
     }
 
     public function buscar(Request $request)
@@ -71,6 +136,7 @@ class ReportarEquipoController extends Controller
         ]);
 
         $cedula = trim($request->input('cedula_o_nit'));
+        $equipoId = $request->input('equipo_id');
         $persona = Persona::where('cedula_o_nit', $cedula)->first();
 
         if ($persona) {
@@ -85,43 +151,58 @@ class ReportarEquipoController extends Controller
                 'maestria',
                 'ejercicio_politico_origen_id',
             ]);
+
+            if ($equipoId) {
+                $pivot = \DB::table('equipo_campania_persona')
+                    ->where('equipo_campania_id', $equipoId)
+                    ->where('persona_id', $persona->id)
+                    ->first();
+                if ($pivot) {
+                    $data['priorizacion'] = $pivot->priorizacion;
+                }
+            }
             session()->flash('reportar_persona', $data);
         } else {
             session()->flash('reportar_persona', null);
         }
 
         session()->flash('reportar_cedula', $cedula);
-        session()->flash('reportar_equipo_id', $request->input('equipo_id'));
+        session()->flash('reportar_equipo_id', $equipoId);
 
         return redirect()->route('reportar-equipo.create');
     }
 
     public function store(Request $request)
     {
-        $personaExistente = Persona::where('cedula_o_nit', $request->input('cedula_o_nit'))->first();
-
         $rules = [
             'equipo_id' => 'required|exists:equipos_campania,id',
+            'nombre_contratista' => 'required|string|max:255',
             'cedula_o_nit' => 'required|string|max:50',
+            'celular' => 'required|string|max:50',
+            'genero' => 'required|string|max:10',
             'foto' => 'nullable|image|max:2048',
             'documento_pdf' => 'nullable|mimes:pdf|max:5120',
-            'nivel_academico_id' => 'nullable|exists:niveles_academicos,id',
-            'tecnico_tecnologo_profesion' => 'nullable|string|max:255',
-            'especializacion' => 'nullable|string|max:255',
-            'maestria' => 'nullable|string|max:255',
+            'nivel_academico_id' => 'required|exists:niveles_academicos,id',
+            'tecnico_tecnologo_profesion' => 'required|string|max:255',
+            'especializacion' => 'required|string|max:255',
+            'maestria' => 'required|string|max:255',
+            'priorizacion' => 'required|integer|min:1|max:3',
         ];
-
-        if (!$personaExistente) {
-            $rules['nombre_contratista'] = 'required|string|max:255';
-        }
 
         $data = $request->validate($rules);
 
         $user = backpack_user();
-        $equipo = EquipoCampania::with('ejercicioPolitico')
-            ->where('coordinador_user_id', $user->id)
-            ->findOrFail($data['equipo_id']);
+        $allowedCampaignIds = $user->ejerciciosPoliticosVisibles()->pluck('ejercicios_politicos.id');
+        $equipoQuery = EquipoCampania::with('ejercicioPolitico')
+            ->where('coordinador_user_id', $user->id);
+        if ($allowedCampaignIds->isNotEmpty()) {
+            $equipoQuery->whereIn('ejercicio_politico_id', $allowedCampaignIds);
+        } else {
+            abort(403);
+        }
+        $equipo = $equipoQuery->findOrFail($data['equipo_id']);
 
+        $personaExistente = Persona::where('cedula_o_nit', $request->input('cedula_o_nit'))->first();
         if ($personaExistente) {
             $persona = $personaExistente;
         } else {
@@ -129,9 +210,8 @@ class ReportarEquipoController extends Controller
             $persona->created_by_user_id = $user->id;
         }
 
-        if ($request->filled('nombre_contratista')) {
-            $persona->nombre_contratista = $request->input('nombre_contratista');
-        }
+        $persona->nombre_contratista = $request->input('nombre_contratista');
+        $persona->nombre_contratista = $request->input('nombre_contratista');
         $persona->cedula_o_nit = $data['cedula_o_nit'];
         $persona->celular = $request->input('celular');
         $persona->genero = $request->input('genero');
@@ -153,7 +233,26 @@ class ReportarEquipoController extends Controller
         $persona->save();
 
         // Asociar al equipo
-        $equipo->personas()->syncWithoutDetaching([$persona->id]);
+        $pivotData = [
+            'priorizacion' => $data['priorizacion'],
+        ];
+        $existsPivot = \DB::table('equipo_campania_persona')
+            ->where('equipo_campania_id', $equipo->id)
+            ->where('persona_id', $persona->id)
+            ->exists();
+        if ($existsPivot) {
+            $equipo->personas()->updateExistingPivot($persona->id, $pivotData);
+        } else {
+            $equipo->personas()->attach($persona->id, $pivotData);
+            DB::table('equipo_campania_persona_historial')->insert([
+                'equipo_campania_id' => $equipo->id,
+                'persona_id' => $persona->id,
+                'user_id' => $user->id,
+                'accion' => 'agregado',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         // Asociar a campaña del equipo
         $equipo->ejercicioPolitico?->personas()->syncWithoutDetaching([$persona->id]);
@@ -167,6 +266,64 @@ class ReportarEquipoController extends Controller
         }
 
         \Alert::success('Miembro reportado correctamente.')->flash();
+        return redirect()->route('reportar-equipo.index', ['equipo_id' => $equipo->id]);
+    }
+
+    public function updateMember(Request $request)
+    {
+        $rules = [
+            'equipo_id' => 'required|exists:equipos_campania,id',
+            'persona_id' => 'required|exists:personas,id',
+            'nombre_contratista' => 'required|string|max:255',
+            'cedula_o_nit' => 'required|string|max:50',
+            'celular' => 'required|string|max:50',
+            'genero' => 'required|string|max:10',
+            'foto' => 'nullable|image|max:2048',
+            'documento_pdf' => 'nullable|mimes:pdf|max:5120',
+            'nivel_academico_id' => 'required|exists:niveles_academicos,id',
+            'tecnico_tecnologo_profesion' => 'required|string|max:255',
+            'especializacion' => 'required|string|max:255',
+            'maestria' => 'required|string|max:255',
+            'priorizacion' => 'required|integer|min:1|max:3',
+        ];
+
+        $data = $request->validate($rules);
+
+        $user = backpack_user();
+        $allowedCampaignIds = $user->ejerciciosPoliticosVisibles()->pluck('ejercicios_politicos.id');
+        $equipoQuery = EquipoCampania::with('ejercicioPolitico')
+            ->where('coordinador_user_id', $user->id);
+        if ($allowedCampaignIds->isNotEmpty()) {
+            $equipoQuery->whereIn('ejercicio_politico_id', $allowedCampaignIds);
+        } else {
+            abort(403);
+        }
+        $equipo = $equipoQuery->findOrFail($data['equipo_id']);
+
+        $persona = Persona::findOrFail($data['persona_id']);
+
+        $persona->cedula_o_nit = $data['cedula_o_nit'];
+        $persona->celular = $request->input('celular');
+        $persona->genero = $request->input('genero');
+        $persona->nivel_academico_id = $request->input('nivel_academico_id');
+        $persona->tecnico_tecnologo_profesion = $request->input('tecnico_tecnologo_profesion');
+        $persona->especializacion = $request->input('especializacion');
+        $persona->maestria = $request->input('maestria');
+
+        if ($request->file('foto')) {
+            $persona->foto = $request->file('foto');
+        }
+        if ($request->file('documento_pdf')) {
+            $persona->documento_pdf = $request->file('documento_pdf');
+        }
+
+        $persona->save();
+
+        $equipo->personas()->updateExistingPivot($persona->id, [
+            'priorizacion' => $data['priorizacion'],
+        ]);
+
+        \Alert::success('Miembro actualizado correctamente.')->flash();
         return redirect()->route('reportar-equipo.index', ['equipo_id' => $equipo->id]);
     }
 
@@ -185,6 +342,15 @@ class ReportarEquipoController extends Controller
         $persona = Persona::findOrFail($data['persona_id']);
 
         $equipo->personas()->detach($persona->id);
+
+        DB::table('equipo_campania_persona_historial')->insert([
+            'equipo_campania_id' => $equipo->id,
+            'persona_id' => $persona->id,
+            'user_id' => $user->id,
+            'accion' => 'retirado',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $refId = $equipo->coordinador?->referencia_id;
         if ($refId) {

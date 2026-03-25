@@ -33,6 +33,7 @@ class EquipoCampania extends Model
 
     public function personas()
     {
-        return $this->belongsToMany(Persona::class, 'equipo_campania_persona', 'equipo_campania_id', 'persona_id');
+        return $this->belongsToMany(Persona::class, 'equipo_campania_persona', 'equipo_campania_id', 'persona_id')
+            ->withPivot(['priorizacion']);
     }
 }

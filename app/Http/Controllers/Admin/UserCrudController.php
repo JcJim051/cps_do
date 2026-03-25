@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Requests\UserRequest;
 use App\Models\User;
 use App\Models\Referencia;
+use App\Models\EjercicioPolitico;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use Spatie\Permission\Models\Role;
@@ -13,7 +14,7 @@ class UserCrudController extends CrudController
 {
     use \Backpack\CRUD\app\Http\Controllers\Operations\ListOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\CreateOperation;
-    use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation;
+    use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation { update as traitUpdate; }
     use \Backpack\CRUD\app\Http\Controllers\Operations\DeleteOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
 
@@ -92,6 +93,19 @@ class UserCrudController extends CrudController
             'wrapper' => ['class' => 'form-group col-md-6 js-referencia-wrapper'],
         ]);
 
+        if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
+            CRUD::addField([
+                'name' => 'ejerciciosPoliticosVisibles',
+                'label' => 'Campañas visibles',
+                'type' => 'select2_multiple',
+                'entity' => 'ejerciciosPoliticosVisibles',
+                'model' => EjercicioPolitico::class,
+                'attribute' => 'nombre',
+                'pivot' => true,
+                'wrapper' => ['class' => 'form-group col-md-12'],
+            ]);
+        }
+
         CRUD::addField([
             'name' => 'secretaria_id',
             'label' => 'Secretaría',
@@ -99,7 +113,7 @@ class UserCrudController extends CrudController
             'entity' => 'secretaria',
             'attribute' => 'nombre',
             'model' => \App\Models\Secretaria::class,
-            'wrapper' => ['class' => 'form-group col-md-6'],
+            'wrapper' => ['class' => 'form-group col-md-6 js-secretaria-wrapper'],
             'allows_null' => true,
         ]);
     
@@ -110,7 +124,7 @@ class UserCrudController extends CrudController
             'entity' => 'gerencia',
             'attribute' => 'nombre',
             'model' => \App\Models\Gerencia::class,
-            'wrapper' => ['class' => 'form-group col-md-6'],
+            'wrapper' => ['class' => 'form-group col-md-6 js-gerencia-wrapper'],
             'allows_null' => true,
         ]);
     
@@ -127,6 +141,8 @@ class UserCrudController extends CrudController
                     const roleSelect = document.querySelector("[name=role_id]");
                     const referenciaWrapper = document.querySelector(".js-referencia-wrapper");
                     const referenciaSelect = document.querySelector("[name=referencia_id]");
+                    const secretariaWrapper = document.querySelector(".js-secretaria-wrapper");
+                    const gerenciaWrapper = document.querySelector(".js-gerencia-wrapper");
 
                     function cargarGerencias(secretariaId) {
                         if (!secretariaId) return;
@@ -160,6 +176,13 @@ class UserCrudController extends CrudController
                         if (!isCoordinador && referenciaSelect) {
                             referenciaSelect.value = "";
                         }
+
+                        if (secretariaWrapper) secretariaWrapper.style.display = isCoordinador ? "none" : "block";
+                        if (gerenciaWrapper) gerenciaWrapper.style.display = isCoordinador ? "none" : "block";
+                        if (isCoordinador) {
+                            if (secretaria) secretaria.value = "";
+                            if (gerencia) gerencia.value = "";
+                        }
                     }
 
                     roleSelect?.addEventListener("change", toggleReferencia);
@@ -173,6 +196,14 @@ class UserCrudController extends CrudController
     protected function setupUpdateOperation(): void
     {
         $this->setupCreateOperation();
+    }
+
+    public function update()
+    {
+        if (!request()->filled('password')) {
+            request()->request->remove('password');
+        }
+        return $this->traitUpdate();
     }
 
       

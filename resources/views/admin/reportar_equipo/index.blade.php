@@ -74,20 +74,13 @@
                                         @endif
                                     </td>
                                     <td>
+                                        <a class="btn btn-sm btn-outline-primary mb-1" href="{{ route('reportar-equipo.edit', ['equipo_id' => $row['equipo_id'], 'persona_id' => $row['persona']->id]) }}">Editar</a>
                                         <form method="POST" action="{{ route('reportar-equipo.remove') }}" onsubmit="return confirm('¿Retirar este miembro del equipo?')">
                                             @csrf
                                             <input type="hidden" name="equipo_id" value="{{ $row['equipo_id'] }}">
                                             <input type="hidden" name="persona_id" value="{{ $row['persona']->id }}">
                                             <button class="btn btn-sm btn-outline-danger" type="submit">Retirar</button>
                                         </form>
-                                        @if($row['persona']->created_by_user_id && $row['persona']->created_by_user_id == backpack_user()->id)
-                                            <form method="POST" action="{{ route('reportar-equipo.deletePersona') }}" class="mt-1" onsubmit="return confirm('¿Eliminar esta persona por completo?')">
-                                                @csrf
-                                                <input type="hidden" name="equipo_id" value="{{ $row['equipo_id'] }}">
-                                                <input type="hidden" name="persona_id" value="{{ $row['persona']->id }}">
-                                                <button class="btn btn-sm btn-danger" type="submit">Eliminar persona</button>
-                                            </form>
-                                        @endif
                                     </td>
                                 </tr>
                             @endforeach

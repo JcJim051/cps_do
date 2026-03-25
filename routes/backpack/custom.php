@@ -62,10 +62,11 @@ Route::group([
     Route::group(['middleware' => ['role:coordinador,coordinador_comite']], function () {
         Route::get('reportar-equipo', 'ReportarEquipoController@index')->name('reportar-equipo.index');
         Route::get('reportar-equipo/reportar', 'ReportarEquipoController@create')->name('reportar-equipo.create');
+        Route::get('reportar-equipo/editar', 'ReportarEquipoController@edit')->name('reportar-equipo.edit');
         Route::post('reportar-equipo/buscar', 'ReportarEquipoController@buscar')->name('reportar-equipo.buscar');
         Route::post('reportar-equipo', 'ReportarEquipoController@store')->name('reportar-equipo.store');
+        Route::post('reportar-equipo/actualizar', 'ReportarEquipoController@updateMember')->name('reportar-equipo.update');
         Route::post('reportar-equipo/remove', 'ReportarEquipoController@remove')->name('reportar-equipo.remove');
-        Route::post('reportar-equipo/delete-persona', 'ReportarEquipoController@deletePersona')->name('reportar-equipo.deletePersona');
     });
 }); // this should be the absolute last line of this file
 
