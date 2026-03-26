@@ -37,7 +37,7 @@ class PersonaRequest extends FormRequest
             'especializacion' => 'nullable|string|max:255',
             'maestria' => 'nullable|string|max:255',
             'referencia_id' => 'nullable|exists:referencias,id',
-            'ejercicio_politico_origen_id' => 'required|exists:ejercicios_politicos,id',
+            'ejercicio_politico_origen_id' => 'nullable|exists:ejercicios_politicos,id',
             'estado' => 'nullable|string|max:100',
             'foto' => 'nullable|image|max:2048', // 2MB
             'documento_pdf' => 'nullable|mimes:pdf|max:5120', // 5MB

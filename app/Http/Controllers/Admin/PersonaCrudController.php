@@ -112,16 +112,6 @@ class PersonaCrudController extends CrudController
         });
 
         $this->crud->addFilter([
-            'name'  => 'ejercicio_politico_origen_id',
-            'type'  => 'select2',
-            'label' => 'Campaña de ingreso'
-        ], function () {
-            return \App\Models\EjercicioPolitico::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'ejercicio_politico_origen_id', $value);
-        });
-
-        $this->crud->addFilter([
             'name'  => 'prioridad_equipo',
             'type'  => 'select2',
             'label' => 'Priorización'
@@ -324,17 +314,6 @@ class PersonaCrudController extends CrudController
             },
         ]);
 
-        if ($user && $user->hasAnyRole(['admin', 'diana'])) {
-            CRUD::addColumn([
-                'label' => 'Campaña de ingreso',
-                'type' => 'select',
-                'name' => 'ejercicio_politico_origen_id',
-                'entity' => 'ejercicioPoliticoOrigen',
-                'attribute' => 'nombre',
-                'model' => EjercicioPolitico::class,
-                'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            ]);
-        }
         // No Tocar (badge visual)
         CRUD::addColumn([
             'name' => 'no_tocar',
@@ -665,19 +644,6 @@ class PersonaCrudController extends CrudController
             CRUD::addField(['name' => 'placeholder_notocar', 'type' => 'custom_html', 'value' => '', 'wrapper' => ['class' => 'form-group col-md-4']]);
         }
 
-        $ultimoEjercicioId = EjercicioPolitico::orderBy('id', 'desc')->value('id');
-        CRUD::addField([
-            'label'     => "Campaña de ingreso",
-            'type'      => 'select2',
-            'name'      => 'ejercicio_politico_origen_id',
-            'entity'    => 'ejercicioPoliticoOrigen',
-            'attribute' => 'nombre',
-            'model'     => EjercicioPolitico::class,
-            'wrapper'   => ['class' => 'form-group col-md-4'],
-            'allows_null' => false,
-            'default' => $ultimoEjercicioId,
-        ]);
-        
         // --- FILA 6: Archivos ---
         CRUD::addField([
             'name' => 'foto',
@@ -875,6 +841,7 @@ class PersonaCrudController extends CrudController
                     $rows = collect();
                     foreach ($equipos as $equipo) {
                         $rows->push([
+                            'equipo_id' => $equipo->id,
                             'campania_id' => $equipo->ejercicioPolitico?->id,
                             'campania' => $equipo->ejercicioPolitico?->nombre ?? '-',
                             'equipo' => $equipo->nombre,
@@ -887,6 +854,7 @@ class PersonaCrudController extends CrudController
                             continue;
                         }
                         $rows->push([
+                            'equipo_id' => $row->equipo_id,
                             'campania_id' => $row->campania_id,
                             'campania' => $row->campania_nombre ?? '-',
                             'equipo' => $row->equipo_nombre ?? '-',
@@ -894,6 +862,9 @@ class PersonaCrudController extends CrudController
                             'estado' => 'Retirado',
                         ]);
                     }
+
+                    $equiposUnicos = $rows->pluck('equipo_id')->filter()->unique();
+                    $esNuevoGlobal = $equiposUnicos->count() <= 1;
 
                     $tieneRetirados = $rows->contains(function ($row) {
                         return $row['estado'] === 'Retirado';
@@ -914,9 +885,8 @@ class PersonaCrudController extends CrudController
                         $label = $priorizacion !== null ? (string) $priorizacion : '-';
                         $color = $priorizacion !== null ? 'text-body fw-semibold' : 'text-muted';
                         $estadoClass = $row['estado'] === 'Activo' ? 'text-success fw-semibold' : 'text-muted';
-                        $esNuevo = $row['campania_id'] && $entry->ejercicio_politico_origen_id == $row['campania_id'];
-                        $nuevoLabel = $esNuevo ? 'Sí' : 'No';
-                        $nuevoClass = $esNuevo ? 'text-success fw-semibold' : 'text-muted';
+                        $nuevoLabel = $esNuevoGlobal ? 'Sí' : 'No';
+                        $nuevoClass = $esNuevoGlobal ? 'text-success fw-semibold' : 'text-muted';
                         $html .= '<tr>';
                         $html .= '<td>'.e($row['campania']).'</td>';
                         $html .= '<td>'.e($row['equipo']).'</td>';
