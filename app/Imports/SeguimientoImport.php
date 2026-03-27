@@ -95,16 +95,10 @@ class SeguimientoImport implements
                         throw new \Exception("El año es obligatorio para crear un seguimiento");
                     }
 
-                    $campaignId = $editableData['ejercicio_politico_id'] ?? $persona->ejercicio_politico_origen_id;
-                    if (empty($campaignId)) {
-                        throw new \Exception("La campaña es obligatoria para crear un seguimiento");
-                    }
-
                     $seguimiento = new Seguimiento(array_merge($editableData, [
                         'persona_id' => $persona->id,
                         'anio'       => $row['anio'],
                         'tipo'       => $row['tipo'] ?? 'contrato',
-                        'ejercicio_politico_id' => $campaignId,
                     ]));
 
                     // 🚫 NO recalcular (Excel manda)
@@ -137,7 +131,6 @@ class SeguimientoImport implements
     protected function mapEditableData($row): array
     {
         return [
-            'ejercicio_politico_id' => $this->num($row['ejercicio_politico_id'] ?? null),
             'tipo'        => $row['tipo'] ?? null,
             'observaciones' => $row['observaciones'] ?? null,
 
