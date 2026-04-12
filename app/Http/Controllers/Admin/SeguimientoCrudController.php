@@ -29,7 +29,7 @@ class SeguimientoCrudController extends CrudController
     {
         CRUD::setModel(\App\Models\Seguimiento::class);
         CRUD::setRoute(config('backpack.base.route_prefix') . '/seguimiento');
-        CRUD::setEntityNameStrings('seguimiento', 'seguimientos');
+        CRUD::setEntityNameStrings('seguimiento cto', 'seguimientos cto');
     
     }
 
@@ -79,19 +79,6 @@ class SeguimientoCrudController extends CrudController
             return \App\Models\Persona::pluck('cedula_o_nit', 'id')->toArray();
         }, function ($value) {
             $this->crud->addClause('where', 'persona_id', $value);
-        });
-
-        // Filtro por Tipo (usa persona->tipos_id)
-        $this->crud->addFilter([
-            'name'  => 'tipo_id',
-            'type'  => 'select2',
-            'label' => 'Tipo'
-        ], function () {
-            return \App\Models\Tipo::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->query->whereHas('persona', function ($q) use ($value) {
-                $q->where('tipos_id', $value);
-            });
         });
 
         // Estado contrato
@@ -933,10 +920,6 @@ class SeguimientoCrudController extends CrudController
 
                 case 'persona_cedula':
                     $query->whereHas('persona', fn($q) => $q->where('cedula_o_nit', $value));
-                    break;
-
-                case 'tipo_id':
-                    $query->whereHas('persona', fn($q) => $q->where('tipos_id', $value));
                     break;
 
                 case 'observaciones':

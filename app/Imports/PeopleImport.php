@@ -44,11 +44,9 @@ class PeopleImport implements ToCollection, WithHeadingRow, WithValidation, Skip
                     'tecnico_tecnologo_profesion' => $row['tecnico_tecnologo_profesion'] ?? null,
                     'especializacion'             => $row['especializacion'] ?? null,
                     'maestria'                    => $row['maestria'] ?? null,
-                    'no_tocar'                    => $row['no_tocar'] ?? false,
                     'referencia_2'                => $row['referencia_2'] ?? null,
 
                     'estado_persona_id'           => intval($row['estado_persona_id'] ?? 0) ?: null,
-                    'tipos_id'                    => intval($row['tipos_id'] ?? 0) ?: null,
                     'nivel_academico_id'          => intval($row['nivel_academico_id'] ?? 0) ?: null,
                     'caso_id'                     => intval($row['caso_id'] ?? 0) ?: null,
                     'secretaria_id'               => intval($row['secretaria_id'] ?? 0) ?: null,

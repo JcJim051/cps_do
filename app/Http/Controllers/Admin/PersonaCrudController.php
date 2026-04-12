@@ -7,13 +7,14 @@ use App\Models\Persona;
 use App\Models\Referencia;
 use App\Models\NivelAcademico;
 use App\Models\EstadoPersona; // Necesario para la nueva relación
-use App\Models\Tipo; // Necesario para la nueva relación
 use App\Models\EjercicioPolitico;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use App\Exports\PeopleTemplateExport;
 use Illuminate\Http\Request;
 use App\Imports\PeopleImport;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 
 class PersonaCrudController extends CrudController
 {
@@ -82,21 +83,6 @@ class PersonaCrudController extends CrudController
         //         $q->where('id', $value);
         //     });
         // });
-        
-        // Tipo
-        $this->crud->addFilter([
-            'name'  => 'tipo_id',
-            'type'  => 'select2',
-            'label' => 'Tipo'
-        ], function () {
-            return \App\Models\Tipo::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('whereHas', 'tipo', function ($q) use ($value) {
-                $q->where('id', $value);
-            });
-        });
-        
-      
         
         // Referencias (muchos a muchos)
         $this->crud->addFilter([
@@ -200,16 +186,7 @@ class PersonaCrudController extends CrudController
         CRUD::addColumn([
             'name' => 'nombre_contratista',
             'label' => 'Nombre Contratista',
-            'type' => 'closure',
-            'function' => function ($entry) {
-                $nombre = e($entry->nombre_contratista);
-                if ($entry->no_tocar) {
-                    return '<strong style="color:#6610f2;" data-bs-toggle="tooltip" title="No Tocar">'
-                         . $nombre . '</strong>';
-                }
-                return $nombre;
-            },
-            'escaped' => false,
+            'type' => 'text',
             'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
             'searchLogic' => function ($query, $column, $searchTerm) {
                 $query->orWhere('nombre_contratista', 'like', '%'.$searchTerm.'%');
@@ -284,21 +261,6 @@ class PersonaCrudController extends CrudController
         //     },
         // ]);
 
-        // NUEVO CAMPO: Tipo (Relación)
-        CRUD::addColumn([
-            'label' => 'Tipo',
-            'type' => 'select',
-            'name' => 'tipo_id',
-            'entity' => 'tipo', // Relación definida en el modelo
-            'attribute' => 'nombre',
-            'model' => Tipo::class,
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('tipo', function($q) use ($searchTerm) {
-                    $q->where('nombre', 'like', '%'.$searchTerm.'%');
-                });
-            },
-        ]);
         CRUD::addColumn([
             'label' => 'Nivel Académico',
             'type' => 'select',
@@ -314,23 +276,6 @@ class PersonaCrudController extends CrudController
             },
         ]);
 
-        // No Tocar (badge visual)
-        CRUD::addColumn([
-            'name' => 'no_tocar',
-            'label' => 'No Tocar',
-            'type' => 'closure',
-            'function' => function ($entry) {
-                return $entry->no_tocar
-                    ? '<span class="badge bg-danger">NO TOCAR</span>'
-                    : '<span class="badge bg-secondary">-</span>';
-            },
-            'escaped' => false,
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                if (stripos('NO TOCAR', $searchTerm) !== false) {
-                    $query->orWhere('no_tocar', 1);
-                }
-            },
-        ]);
 
         // Secretaría (usamos la relación)
         // CRUD::addColumn([
@@ -360,37 +305,7 @@ class PersonaCrudController extends CrudController
         $this->crud->addButtonFromView('top', 'import', 'import_button', 'end'); // 'import_button' es el nombre de la vista que se crea abajo
         // ...
         // 🔧 Script para tooltips, una sola vez
-        $this->crud->addColumn([
-            'name' => '_init_tooltips_once',
-            'label' => '',
-            'type' => 'closure',
-            'function' => function ($entry) {
-                static $printed = false;
-                if ($printed) return '';
-                $printed = true;
-                return <<<'EOT'
-                <script>
-                (function(){
-                    function initTooltips(){
-                        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el){
-                            if (!el._bs_tooltip) {
-                                new bootstrap.Tooltip(el);
-                                el._bs_tooltip = true;
-                            }
-                        });
-                    }
-                    document.addEventListener('DOMContentLoaded', initTooltips);
-                    if (window.jQuery && window.jQuery.fn.dataTable) {
-                        jQuery(document).on('draw.dt', initTooltips);
-                    }
-                })();
-                </script>
-                EOT;
-            },
-            'escaped' => false,
-            'visible' => false,
-            
-        ]);
+        
                 
                 // ✅ Select para filtrar Nivel Académico
                 $this->crud->addClause('where', function ($query) {
@@ -489,18 +404,6 @@ class PersonaCrudController extends CrudController
             ->options(['Masculino' => 'Masculino', 'Femenino' => 'Femenino'])
             ->wrapper(['class' => 'form-group col-md-4']);
         
-        // NUEVO CAMPO: Tipo
-        CRUD::addField([
-            'label'     => "Tipo de Vinculación",
-            'type'      => 'select2',
-            'name'      => 'tipos_id',
-            'entity'    => 'tipo',
-            'attribute' => 'nombre',
-            'model'     => Tipo::class,
-            'wrapper'   => ['class' => 'form-group col-md-4'],
-            'allows_null' => true,
-        ]);
-
         // NUEVO CAMPO: Estado Persona (Reemplaza 'estado' y usa la relación)
         // CRUD::addField([
         //     'label'     => "Estado de la Persona",
@@ -638,12 +541,6 @@ class PersonaCrudController extends CrudController
         
         
 
-        if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
-            CRUD::field('no_tocar')->label('No Tocar')->type('checkbox')->wrapper(['class' => 'form-group col-md-4']);
-        } else {
-            CRUD::addField(['name' => 'placeholder_notocar', 'type' => 'custom_html', 'value' => '', 'wrapper' => ['class' => 'form-group col-md-4']]);
-        }
-
         // --- FILA 6: Archivos ---
         CRUD::addField([
             'name' => 'foto',
@@ -716,14 +613,14 @@ class PersonaCrudController extends CrudController
         {
             $this->crud->set('show.setFromDb', false);
             $this->crud->set('show.contentClass', 'container-fluid');
-
             // Información principal + foto + pdf
             $this->crud->addColumn([
                 'name'     => 'datos_persona',
                 'label'    => 'Información de la Persona',
                 'type'     => 'closure',
                 'function' => function ($entry) {
-                    $html = '<div class="row">'; // Row principal
+                    $html = '<div class="persona-section" data-section="datos_persona">';
+                    $html .= '<div class="row">'; // Row principal
     
                     // --- 1. FOTO: Ocupa la primera columna (col-md-3) ---
                     if ($entry->foto) {
@@ -808,6 +705,7 @@ class PersonaCrudController extends CrudController
                     $html .= '</div>'; // Cierra el contenedor col-md-9
     
                     $html .= '</div>'; // Cierra el row principal
+                    $html .= '</div>'; // Cierra persona-section
                     return $html;
                 },
                 'escaped' => false,
@@ -870,8 +768,14 @@ class PersonaCrudController extends CrudController
                         return $row['estado'] === 'Retirado';
                     });
 
-                    $html = '<div class="card mt-3">';
-                    $html .= '<div class="card-header bg-secondary text-white">Campañas y Equipos</div>';
+                    $collapseId = 'trazabilidad-'.$entry->id;
+                    $html = '<div class="persona-section" data-section="trazabilidad">';
+                    $html .= '<div class="card mt-3">';
+                    $html .= '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">';
+                    $html .= '<span>Campañas y Equipos</span>';
+                    $html .= '<button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>';
+                    $html .= '</div>';
+                    $html .= '<div id="'.$collapseId.'" class="collapse">';
                     $html .= '<div class="card-body p-0">';
                     $html .= '<div class="table-responsive"><table class="table mb-0 table-striped align-middle">';
                     $html .= '<thead class="table-light"><tr><th>Campaña</th><th>Equipo</th><th>Priorización</th>';
@@ -898,23 +802,31 @@ class PersonaCrudController extends CrudController
                         $html .= '</tr>';
                     }
 
-                    $html .= '</tbody></table></div></div></div>';
+                    $html .= '</tbody></table></div></div></div></div>';
+                    $html .= '</div>';
                     return $html;
                 },
                 'escaped' => false,
             ]);
+
             // Tabla de seguimientos (SE MANTIENE TAL CUAL)
             $this->crud->addColumn([
                 'name'     => 'seguimientos',
-                'label'    => 'Seguimientos',
+                'label'    => 'Seguimientos Cto',
                 'type'     => 'closure',
                 'function' => function ($entry) {
                     if ($entry->seguimientos->isEmpty()) {
                         return '<p class="text-muted">Sin seguimientos registrados.</p>';
                     }
         
-                    $html = '<div class="mt-4 card">
-                                <div class="text-white card-header bg-primary">Seguimientos</div>
+                    $collapseId = 'seguimientos-cto-'.$entry->id;
+                    $html = '<div class="persona-section" data-section="seguimientos_cto">';
+                    $html .= '<div class="mt-4 card">
+                                <div class="text-white card-header bg-primary d-flex justify-content-between align-items-center">
+                                    <span>Seguimientos</span>
+                                    <button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>
+                                </div>
+                                <div id="'.$collapseId.'" class="collapse">
                                 <div class="p-0 card-body">
                                     <div class="table-responsive">
                                         <table class="table mb-0 align-middle table-striped">
@@ -972,12 +884,210 @@ class PersonaCrudController extends CrudController
                                         </table>
                                     </div>
                                 </div>
+                            </div>
                             </div>';
+                    $html .= '</div>';
         
                     return $html;
                 },
                 'escaped' => false,
             ]);
+
+            $this->crud->addColumn([
+                'name'     => 'seguimientos_nom',
+                'label'    => 'Seguimientos Nom',
+                'type'     => 'closure',
+                'function' => function ($entry) {
+                    if ($entry->seguimientosNom->isEmpty()) {
+                        return '<p class="text-muted">Sin seguimientos Nom registrados.</p>';
+                    }
+
+                    $collapseId = 'seguimientos-nom-'.$entry->id;
+                    $html = '<div class="persona-section" data-section="seguimientos_nom">';
+                    $html .= '<div class="mt-4 card">
+                                <div class="text-white card-header bg-primary d-flex justify-content-between align-items-center">
+                                    <span>Seguimientos Nom</span>
+                                    <button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>
+                                </div>
+                                <div id="'.$collapseId.'" class="collapse">
+                                <div class="p-0 card-body">
+                                    <div class="table-responsive">
+                                        <table class="table mb-0 align-middle table-striped">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Dependencia</th>
+                                                    <th>Cargo</th>
+                                                    <th>Tipo Vinculación</th>
+                                                    <th>Fecha Ingreso</th>
+                                                    <th>Salario</th>
+                                                    <th>Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>';
+
+                    foreach ($entry->seguimientosNom as $i => $seg) {
+                        $salario = $seg->salario !== null
+                            ? '$ ' . number_format((float) $seg->salario, 0, ',', '.')
+                            : '-';
+                        $html .= '<tr>
+                                    <td>'.($i+1).'</td>
+                                    <td>'.e($seg->secretaria?->nombre ?? '-').'</td>
+                                    <td>'.e($seg->cargo?->nombre ?? '-').'</td>
+                                    <td>'.e($seg->tipoVinculacion?->nombre ?? '-').'</td>
+                                    <td>'.e($seg->fecha_ingreso ?? '-').'</td>
+                                    <td>'.$salario.'</td>
+                                    <td>
+                                        <a href="'.url('admin/seguimiento-nom/'.$seg->id.'/show').'" class="btn btn-sm btn-outline-primary">Ver</a>
+                                    </td>
+                                </tr>';
+                    }
+
+                    $html .= '           </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            </div>';
+                    $html .= '</div>';
+
+                    return $html;
+                },
+                'escaped' => false,
+            ]);
+
+            $this->crud->addColumn([
+                'name'     => 'datos_abiertos',
+                'label'    => 'Datos abiertos',
+                'type'     => 'closure',
+                'function' => function ($entry) {
+                    $cedula = trim((string) ($entry->cedula_o_nit ?? ''));
+                    if ($cedula === '') {
+                        return '<p class="text-muted">Sin documento para consultar Datos Abiertos.</p>';
+                    }
+
+                    $cacheKey = 'datos_abiertos_contratos_' . $cedula;
+                    try {
+                        $result = Cache::remember($cacheKey, 600, function () use ($cedula) {
+                        $baseUrl = 'https://www.datos.gov.co/resource/jbjy-vk9h.json';
+                        $select = implode(', ', [
+                            'nombre_entidad',
+                            'estado_contrato',
+                            'tipo_de_contrato',
+                            'fecha_de_firma',
+                            'fecha_de_inicio_del_contrato',
+                            'fecha_de_fin_del_contrato',
+                            'valor_del_contrato',
+                            'urlproceso',
+                        ]);
+                        $where = "documento_proveedor = '{$cedula}' AND fecha_de_firma >= '2024-01-01T00:00:00.000'";
+
+                        $response = Http::timeout(10)->get($baseUrl, [
+                            '$select' => $select,
+                            '$where' => $where,
+                            '$order' => 'fecha_de_firma DESC',
+                            '$limit' => 1000,
+                        ]);
+
+                        if (!$response->ok()) {
+                            throw new \Exception('HTTP ' . $response->status());
+                        }
+
+                        return $response->json();
+                    });
+                    } catch (\Throwable $e) {
+                        return '<p class="text-muted">No se pudo consultar Datos Abiertos.</p>';
+                    }
+
+                    if (empty($result)) {
+                        return '<p class="text-muted">Sin contratos desde 2024.</p>';
+                    }
+
+                    $safe = function ($value) {
+                        if (is_array($value)) {
+                            $value = json_encode($value, JSON_UNESCAPED_UNICODE);
+                        }
+                        if ($value === null || $value === '') {
+                            return '-';
+                        }
+                        return e((string) $value);
+                    };
+
+                    $collapseId = 'datos-abiertos-'.$entry->id;
+                    $html = '<div class="persona-section" data-section="datos_abiertos">';
+                    $html .= '<div class="card mt-3">';
+                    $html .= '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">';
+                    $html .= '<span>Datos abiertos</span>';
+                    $html .= '<button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>';
+                    $html .= '</div>';
+                    $html .= '<div id="'.$collapseId.'" class="collapse">';
+                    $html .= '<div class="card-body p-0">';
+                    $html .= '<div class="table-responsive"><table class="table mb-0 table-striped align-middle">';
+                    $html .= '<thead class="table-light"><tr>'
+                        . '<th>Entidad</th>'
+                        . '<th>Estado</th>'
+                        . '<th>Tipo</th>'
+                        . '<th>Fecha firma</th>'
+                        . '<th>Inicio</th>'
+                        . '<th>Fin</th>'
+                        . '<th>Valor</th>'
+                        . '<th>URL proceso</th>'
+                        . '</tr></thead><tbody>';
+
+                    foreach ($result as $row) {
+                        $url = $row['urlproceso'] ?? '';
+                        if (is_array($url)) {
+                            $url = $url['url'] ?? json_encode($url, JSON_UNESCAPED_UNICODE);
+                        } elseif (is_string($url) && str_starts_with($url, '{') && str_contains($url, '"url"')) {
+                            $decoded = json_decode($url, true);
+                            if (is_array($decoded) && !empty($decoded['url'])) {
+                                $url = $decoded['url'];
+                            }
+                        }
+                        $url = is_string($url) ? trim($url) : '';
+                        if ($url && !str_starts_with($url, 'http')) {
+                            $url = 'https://' . ltrim($url, '/');
+                        }
+                        $urlHtml = $url ? '<a href="'.e($url).'" target="_blank">Ver</a>' : '-';
+                        $valor = $row['valor_del_contrato'] ?? null;
+                        if (is_numeric($valor)) {
+                            $valor = '$ ' . number_format((float) $valor, 0, ',', '.');
+                        }
+                        $fechaFirma = $row['fecha_de_firma'] ?? null;
+                        $fechaInicio = $row['fecha_de_inicio_del_contrato'] ?? null;
+                        $fechaFin = $row['fecha_de_fin_del_contrato'] ?? null;
+                        try {
+                            if ($fechaFirma) $fechaFirma = \Carbon\Carbon::parse($fechaFirma)->format('Y-m-d');
+                        } catch (\Throwable $e) {}
+                        try {
+                            if ($fechaInicio) $fechaInicio = \Carbon\Carbon::parse($fechaInicio)->format('Y-m-d');
+                        } catch (\Throwable $e) {}
+                        try {
+                            if ($fechaFin) $fechaFin = \Carbon\Carbon::parse($fechaFin)->format('Y-m-d');
+                        } catch (\Throwable $e) {}
+                        $nombreEntidad = $row['nombre_entidad'] ?? null;
+                        $esMeta = is_string($nombreEntidad)
+                            && mb_strtoupper(trim($nombreEntidad)) === 'DEPARTAMENTO DEL META';
+                        $rowClass = $esMeta ? '' : 'table-warning';
+                        $html .= '<tr class="'.$rowClass.'">';
+                        $html .= '<td>'.$safe($nombreEntidad).'</td>';
+                        $html .= '<td>'.$safe($row['estado_contrato'] ?? null).'</td>';
+                        $html .= '<td>'.$safe($row['tipo_de_contrato'] ?? null).'</td>';
+                        $html .= '<td>'.$safe($fechaFirma).'</td>';
+                        $html .= '<td>'.$safe($fechaInicio).'</td>';
+                        $html .= '<td>'.$safe($fechaFin).'</td>';
+                        $html .= '<td>'.$safe($valor).'</td>';
+                        $html .= '<td>'.$urlHtml.'</td>';
+                        $html .= '</tr>';
+                    }
+
+                    $html .= '</tbody></table></div></div></div></div>';
+                    $html .= '</div>';
+                    return $html;
+                },
+                'escaped' => false,
+            ]);
+
         }
 
         public function importForm()

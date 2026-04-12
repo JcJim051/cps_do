@@ -25,7 +25,8 @@
     <x-backpack::menu-dropdown-item title="Gerencias" icon="la la-sitemap" :link="backpack_url('gerencia')" />
     <x-backpack::menu-dropdown-item title="Casos" icon="la la-folder" :link="backpack_url('caso')" />
     <x-backpack::menu-dropdown-item title="Estado personas" icon="la la-users" :link="backpack_url('estado-persona')" />
-    <x-backpack::menu-dropdown-item title="Tipos" icon="la la-question" :link="backpack_url('tipo')" />
+    <x-backpack::menu-dropdown-item title="Cargos" icon="la la-briefcase" :link="backpack_url('cargo')" />
+    <x-backpack::menu-dropdown-item title="Tipos de vinculación" icon="la la-link" :link="backpack_url('tipo-vinculacion')" />
 </x-backpack::menu-dropdown>
 @endif
 
@@ -41,7 +42,9 @@
 {{-- Personas y Seguimientos --}}
 @if(backpack_user()->hasRole('admin') || backpack_user()->hasRole('diana'))
 <x-backpack::menu-item title="Personas" icon="la la-user-tag" :link="backpack_url('persona')" />
-<x-backpack::menu-item title="Seguimientos" icon="la la-user-edit" :link="backpack_url('seguimiento')" />
+<x-backpack::menu-item title="Seguimientos Cto" icon="la la-user-edit" :link="backpack_url('seguimiento')" />
+<x-backpack::menu-item title="Seguimientos Nom" icon="la la-id-card" :link="backpack_url('seguimiento-nom')" />
+<x-backpack::menu-item title="Consulta Datos Abiertos" icon="la la-search" :link="backpack_url('consulta-datos-abiertos')" />
 @endif
 
 

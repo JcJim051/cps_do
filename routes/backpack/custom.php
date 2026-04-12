@@ -29,11 +29,13 @@ Route::group([
         Route::crud('caso', 'CasoCrudController');
         Route::crud('user', 'UserCrudController');
         Route::crud('estado-persona', 'EstadoPersonaCrudController');
-        Route::crud('tipo', 'TipoCrudController');
+        Route::crud('cargo', 'CargoCrudController');
+        Route::crud('tipo-vinculacion', 'TipoVinculacionCrudController');
         Route::crud('role', 'RoleCrudController');
         Route::crud('permission', 'PermissionCrudController');
         Route::get('indicadores', [\App\Http\Controllers\Admin\IndicadoresController::class, 'index'])->name('admin.indicadores');
         Route::crud('ejercicio-politico', 'EjercicioPoliticoCrudController');
+        Route::get('consulta-datos-abiertos', 'ConsultaDatosAbiertosController@index')->name('consulta-datos-abiertos.index');
 
     });
 
@@ -41,12 +43,16 @@ Route::group([
    
     Route::crud('persona', 'PersonaCrudController');
     Route::crud('seguimiento', 'SeguimientoCrudController');
+    Route::crud('seguimiento-nom', 'SeguimientoNomCrudController');
     Route::get('person/import', 'App\Http\Controllers\Admin\PersonaCrudController@importForm')->name('person.importForm');
     Route::post('person/import', 'App\Http\Controllers\Admin\PersonaCrudController@import')->name('person.import');
     Route::get('person/template', 'App\Http\Controllers\Admin\PersonaCrudController@downloadTemplate')->name('person.downloadTemplate');
     Route::get('seguimiento/import', 'App\Http\Controllers\Admin\SeguimientoCrudController@importForm')->name('seguimiento.importForm');
     Route::post('seguimiento/import', 'App\Http\Controllers\Admin\SeguimientoCrudController@import')->name('seguimiento.import');
     Route::get('seguimiento/template', 'App\Http\Controllers\Admin\SeguimientoCrudController@downloadTemplate')->name('seguimiento.downloadTemplate');
+    Route::get('seguimiento-nom/import', 'App\Http\Controllers\Admin\SeguimientoNomCrudController@importForm')->name('seguimiento-nom.importForm');
+    Route::post('seguimiento-nom/import', 'App\Http\Controllers\Admin\SeguimientoNomCrudController@import')->name('seguimiento-nom.import');
+    Route::get('seguimiento-nom/template', 'App\Http\Controllers\Admin\SeguimientoNomCrudController@downloadTemplate')->name('seguimiento-nom.downloadTemplate');
     
     
     Route::crud('autorizacion', 'AutorizacionCrudController');

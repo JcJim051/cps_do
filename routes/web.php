@@ -25,7 +25,8 @@ Route::get('seguimiento/{id}/print', function ($id) {
 
 Route::get('admin/seguimiento/export-excel', [SeguimientoCrudController::class, 'exportExcel'])
     ->name('seguimiento.export-excel');
-
+Route::get('admin/seguimiento-nom/export-excel', [\App\Http\Controllers\Admin\SeguimientoNomCrudController::class, 'exportExcel'])
+    ->name('seguimiento-nom.export-excel');
 
 
 

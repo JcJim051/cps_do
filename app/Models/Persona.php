@@ -120,6 +120,11 @@ class Persona extends Model
         return $this->hasMany(Seguimiento::class);
     }
 
+    public function seguimientosNom()
+    {
+        return $this->hasMany(SeguimientoNom::class);
+    }
+
     // Accessors: URLs públicos usando el disk "public"
     public function getFotoUrlAttribute()
     {

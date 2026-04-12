@@ -34,7 +34,6 @@ class PeopleTemplateExport implements WithMultipleSheets
                     'celular',
                     'genero',
                     'estado_persona_id',
-                    'tipos_id',
                     'nivel_academico_id',
                     'tecnico_tecnologo_profesion',
                     'especializacion',
@@ -42,7 +41,6 @@ class PeopleTemplateExport implements WithMultipleSheets
                     'caso_id',
                     'secretaria_id',
                     'gerencia_id',
-                    'no_tocar',
                     'referencias_id', // IDs separados por coma
                     'referencias_2',
                 ];
@@ -62,7 +60,6 @@ class PeopleTemplateExport implements WithMultipleSheets
         $catalogos = [
             ['table' => 'referencias', 'title' => 'C_referencias'],
             ['table' => 'estado_personas', 'title' => 'C_Estados_Persona'],
-            ['table' => 'tipos', 'title' => 'C_Tipos'],
             ['table' => 'niveles_academicos', 'title' => 'C_Nivel_Academico'],
             ['table' => 'casos', 'title' => 'C_Casos'],
             ['table' => 'secretarias', 'title' => 'C_Secretarias'],
