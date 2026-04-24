@@ -3,10 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Requests\AutorizacionRequest;
+use App\Models\Autorizacion;
+use App\Models\Gerencia;
+use App\Models\Persona;
+use App\Models\Secretaria;
+use App\Models\Seguimiento;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use Carbon\Carbon;
-use Illuminate\Http\Request; // ✅ ESTA es la correcta
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AutorizacionCrudController extends CrudController
 {
@@ -14,81 +20,83 @@ class AutorizacionCrudController extends CrudController
     use \Backpack\CRUD\app\Http\Controllers\Operations\CreateOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation { update as traitUpdate; }
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
-    // No necesitamos DeleteOperation si no quieres eliminar
 
     public function setup(): void
     {
-        CRUD::setModel(\App\Models\Autorizacion::class);
+        CRUD::setModel(Autorizacion::class);
         CRUD::setRoute(config('backpack.base.route_prefix') . '/autorizacion');
-        CRUD::setEntityNameStrings('Autorización', 'Autorizaciones');
+        CRUD::setEntityNameStrings('Autorizacion', 'Autorizaciones');
 
         $this->middleware(['role:administrativa,bancos,diana,admin']);
+
         $user = backpack_user();
-
-        // 🚫 Bloquear rol PROGRAMAS (8)
-        if ($user->role_id == 8) {
-            abort(403, 'No tienes permisos para acceder a este módulo');
+        if ($user && (int) $user->role_id === 8) {
+            abort(403, 'No tienes permisos para acceder a este modulo');
         }
-
-        if ($user && $user->hasAnyRole(['coordinador','coordinador_comite'])) {
-            abort(403, 'No tienes permisos para acceder a este módulo');
+        if ($user && $user->hasAnyRole(['coordinador', 'coordinador_comite'])) {
+            abort(403, 'No tienes permisos para acceder a este modulo');
         }
     }
 
     protected function setupListOperation(): void
     {
-        $this->crud->addClause('where', 'tipo', 'contrato');
+        $this->crud->query = $this->crud->query
+            ->from('seguimientos')
+            ->crossJoin(DB::raw("(SELECT 'inicial' as fase_listado UNION ALL SELECT 'adicion' as fase_listado) as fases"))
+            ->where('seguimientos.tipo', 'contrato')
+            ->where(function ($q) {
+                $q->where('fases.fase_listado', 'inicial')
+                    ->orWhere(function ($q2) {
+                        $q2->where('fases.fase_listado', 'adicion')
+                            ->where('seguimientos.adicion', 'SI');
+                    });
+            })
+            ->select('seguimientos.*', DB::raw('fases.fase_listado as fase_listado'));
+
         $this->crud->addClause('with', ['persona', 'secretaria', 'gerencia', 'fuente']);
         $this->crud->enableExportButtons();
+
+        $this->crud->addFilter([
+            'name'  => 'fase_listado',
+            'type'  => 'dropdown',
+            'label' => 'Fase',
+        ], [
+            'inicial' => 'Inicial',
+            'adicion' => 'Adicion',
+        ], function ($value) {
+            $this->crud->addClause('where', 'fases.fase_listado', $value);
+        });
+
         $this->crud->addFilter([
             'name'  => 'anio',
             'type'  => 'select2',
-            'label' => 'Año'
+            'label' => 'Ano',
         ], function () {
-            // Extraemos los años únicos desde la columna 'anio'
-            return \App\Models\Seguimiento::select('anio')
-                ->distinct()
-                ->orderBy('anio', 'desc')
-                ->pluck('anio', 'anio')
-                ->toArray();
+            return Seguimiento::select('anio')->distinct()->orderBy('anio', 'desc')->pluck('anio', 'anio')->toArray();
         }, function ($value) {
-            $this->crud->addClause('where', 'anio', $value);
+            $this->crud->addClause('where', 'seguimientos.anio', $value);
         });
-        
-        $this->crud->addFilter([
-            'name'  => 'estado_aprobacion',
-            'type'  => 'dropdown',
-            'label' => 'Estado de Aprobación',
-        ], [
-            'mayor' => 'Mayor valor al aprobado.',
-            'menor' => 'Menor valor al aprobado.',
-            'sin'   => 'Sin Aprobación',
-        ], function ($value) {
-            $this->crud->addClause('where', 'estado_aprobacion', $value);
-        });
-        // Filtro por Secretaría (secretaria_id)
+
         $this->crud->addFilter([
             'name'  => 'secretaria_id',
             'type'  => 'select2',
-            'label' => 'Secretaría'
+            'label' => 'Secretaria',
         ], function () {
-            return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
+            return Secretaria::pluck('nombre', 'id')->toArray();
         }, function ($value) {
-            $this->crud->addClause('where', 'secretaria_id', $value);
+            $this->crud->addClause('where', 'seguimientos.secretaria_id', $value);
         });
 
-        // Gerencia
         $this->crud->addFilter([
             'name'  => 'gerencia_id',
             'type'  => 'select2',
-            'label' => 'Gerencia'
+            'label' => 'Gerencia',
         ], function () {
-            return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
+            return Gerencia::pluck('nombre', 'id')->toArray();
         }, function ($value) {
-            $this->crud->addClause('where', 'gerencia_id', $value);
+            $this->crud->addClause('where', 'seguimientos.gerencia_id', $value);
         });
-       
-        // Filtro por Persona (persona_id)
+
         $this->crud->addFilter([
             'name'  => 'persona_id',
             'type'  => 'select2_ajax',
@@ -98,84 +106,63 @@ class AutorizacionCrudController extends CrudController
             'select_attribute' => 'display_name',
             'select_key' => 'id',
         ], backpack_url('autorizacion/fetch-persona'), function ($value) {
-            $this->crud->addClause('where', 'persona_id', $value);
+            $this->crud->addClause('where', 'seguimientos.persona_id', $value);
         });
 
-        // Filtro por Valor Total (rango numérico)
-        $this->crud->addFilter([
-            'type'  => 'range',
-            'name'  => 'valor_total',
-            'label' => 'Valor Total'
-        ],
-        false,
-        function ($value) {
-            $range = json_decode($value);
-            if ($range->from) {
-                $this->crud->addClause('where', 'valor_total', '>=', (float)$range->from);
-            }
-            if ($range->to) {
-                $this->crud->addClause('where', 'valor_total', '<=', (float)$range->to);
-            }
-        });
-
-        // Filtro Autorizaciones (Aut 1, 2, 3)
-            // 🔹 Filtro Aut 1
         $this->crud->addFilter([
             'name'  => 'aut_despacho',
             'type'  => 'dropdown',
             'label' => 'Aut 1',
-        ], [
-            1 => 'Autorizado ✅',
-            0 => 'No Autorizado ❌',
-        ], function ($value) {
-            $this->crud->addClause('where', 'aut_despacho', $value);
+        ], [1 => 'Autorizado', 0 => 'No Autorizado'], function ($value) {
+            $this->crud->query->whereRaw(
+                "(CASE WHEN fases.fase_listado='adicion' THEN seguimientos.aut_despacho_adicion ELSE seguimientos.aut_despacho END) = ?",
+                [(int) $value]
+            );
         });
 
-        // 🔹 Filtro Aut 2
         $this->crud->addFilter([
             'name'  => 'aut_planeacion',
             'type'  => 'dropdown',
             'label' => 'Aut 2',
-        ], [
-            1 => 'Autorizado ✅',
-            0 => 'No Autorizado ❌',
-        ], function ($value) {
-            $this->crud->addClause('where', 'aut_planeacion', $value);
+        ], [1 => 'Autorizado', 0 => 'No Autorizado'], function ($value) {
+            $this->crud->query->whereRaw(
+                "(CASE WHEN fases.fase_listado='adicion' THEN seguimientos.aut_planeacion_adicion ELSE seguimientos.aut_planeacion END) = ?",
+                [(int) $value]
+            );
         });
 
-        // 🔹 Filtro Aut 3
         $this->crud->addFilter([
             'name'  => 'aut_administrativa',
             'type'  => 'dropdown',
             'label' => 'Aut 3',
-        ], [
-            1 => 'Autorizado ✅',
-            0 => 'No Autorizado ❌',
-        ], function ($value) {
-            $this->crud->addClause('where', 'aut_administrativa', $value);
+        ], [1 => 'Autorizado', 0 => 'No Autorizado'], function ($value) {
+            $this->crud->query->whereRaw(
+                "(CASE WHEN fases.fase_listado='adicion' THEN seguimientos.aut_administrativa_adicion ELSE seguimientos.aut_administrativa END) = ?",
+                [(int) $value]
+            );
         });
 
-
-        
-
-
-        // Secretaría (relación)
         CRUD::addColumn([
-            'name' => 'secretaria_id',
-            'label' => 'Secretaría',
-            'type' => 'select',
-            'entity' => 'secretaria',
-            'model' => \App\Models\Secretaria::class,
-            'attribute' => 'convencion',
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('secretaria', function($q) use ($searchTerm) {
-                    $q->where('convencion', 'like', '%'.$searchTerm.'%');
-                });
+            'name' => 'fase_listado',
+            'label' => 'Fase',
+            'type' => 'closure',
+            'escaped' => false,
+            'function' => function ($entry) {
+                $isAdicion = ($entry->fase_listado ?? 'inicial') === 'adicion';
+                $label = $isAdicion ? 'Adicion' : 'Inicial';
+                $class = $isAdicion ? 'bg-info' : 'bg-primary';
+                return '<span class="badge '.$class.'">'.$label.'</span>';
             },
         ]);
 
-     
+        CRUD::addColumn([
+            'name' => 'secretaria_id',
+            'label' => 'Secretaria',
+            'type' => 'select',
+            'entity' => 'secretaria',
+            'model' => Secretaria::class,
+            'attribute' => 'convencion',
+        ]);
 
         CRUD::addColumn([
             'name' => 'persona_id',
@@ -183,133 +170,112 @@ class AutorizacionCrudController extends CrudController
             'type' => 'closure',
             'escaped' => false,
             'function' => function ($entry) {
-                $nombre = optional($entry->persona)->nombre_contratista ?? 'N/A';
-                if (!is_null($entry->estado_aprobacion)) {
-                    return '<span style="color:#6a0dad; font-weight:600;">'.e($nombre).'</span>';
-                }
-                return e($nombre);
+                return e(optional($entry->persona)->nombre_contratista ?? 'N/A');
             },
             'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhereHas('persona', function($q) use ($searchTerm) {
+                $query->orWhereHas('persona', function ($q) use ($searchTerm) {
                     $q->where('nombre_contratista', 'like', '%'.$searchTerm.'%');
                 });
             },
         ]);
-        
-        
-        // Valor total (directo en la tabla)
+
         CRUD::addColumn([
-            'name' => 'valor_total',
-            'label' => 'Valor Total',
-            'type' => 'number',
-            'prefix' => '$',
-            'decimals' => 2,
-            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                $query->orWhere('valor_total', 'like', '%'.$searchTerm.'%');
+            'name' => 'valor_fase',
+            'label' => 'Valor',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $isAdicion = ($entry->fase_listado ?? 'inicial') === 'adicion';
+                $value = $isAdicion ? ($entry->valor_adicion ?? 0) : ($entry->valor_total ?? 0);
+                return '$'.number_format((float) $value, 2, ',', '.');
             },
         ]);
 
-        // Aut 1
         CRUD::addColumn([
             'name' => 'aut_despacho',
             'label' => 'Aut 1',
-            'type' => 'model_function',
-            'function_name' => 'getAutDespachoIcon',
+            'type' => 'view',
+            'view' => 'vendor.backpack.crud.columns.autorizacion_toggle',
             'escaped' => false,
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                if (stripos('Autorizado', $searchTerm) !== false) {
-                    $query->orWhere('aut_despacho', 1);
-                } elseif (stripos('No Autorizado', $searchTerm) !== false) {
-                    $query->orWhere('aut_despacho', 0);
-                }
-            },
         ]);
 
-        // Aut 2 (switch en list para rol bancos)
         CRUD::addColumn([
             'name' => 'aut_planeacion',
             'label' => 'Aut 2',
             'type' => 'view',
-            'view' => 'vendor.backpack.crud.columns.aut_planeacion_toggle',
+            'view' => 'vendor.backpack.crud.columns.autorizacion_toggle',
             'escaped' => false,
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                if (stripos('Autorizado', $searchTerm) !== false) {
-                    $query->orWhere('aut_planeacion', 1);
-                } elseif (stripos('No Autorizado', $searchTerm) !== false) {
-                    $query->orWhere('aut_planeacion', 0);
-                }
-            },
         ]);
-        $this->crud->addColumn([
+
+        CRUD::addColumn([
+            'name' => 'aut_administrativa',
+            'label' => 'Aut 3',
+            'type' => 'view',
+            'view' => 'vendor.backpack.crud.columns.autorizacion_toggle',
+            'escaped' => false,
+        ]);
+
+        CRUD::addColumn([
             'name' => 'estado_aprobacion',
             'label' => 'Estado',
             'type' => 'view',
             'view' => 'vendor.backpack.crud.columns.estado_aprobacion_select',
             'escaped' => false,
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                // Buscar por el valor original o por el texto reducido
-                $query->orWhere('estado_aprobacion', 'like', '%'.$searchTerm.'%')
-                      ->orWhere(function($q) use ($searchTerm) {
-                          $map = [
-                              'mayor' => 'Mayor',
-                              'menor' => 'Menor',
-                              'sin'   => 'Sin',
-                          ];
-                          foreach ($map as $dbVal => $display) {
-                              if (stripos($display, $searchTerm) !== false) {
-                                  $q->orWhere('estado_aprobacion', $dbVal);
-                              }
-                          }
-                      });
-            },
         ]);
 
-        // Aut 3
-        CRUD::addColumn([
-            'name' => 'aut_administrativa',
-            'label' => 'Aut 3',
-            'type' => 'model_function',
-            'function_name' => 'getAutAdministrativaIcon',
-            'escaped' => false,
-            'searchLogic' => function ($query, $column, $searchTerm) {
-                if (stripos('Autorizado', $searchTerm) !== false) {
-                    $query->orWhere('aut_administrativa', 1);
-                } elseif (stripos('No Autorizado', $searchTerm) !== false) {
-                    $query->orWhere('aut_administrativa', 0);
-                }
-            },
-        ]);
         $this->crud->removeButtons(['create', 'show', 'delete', 'update']);
         $this->crud->addButtonFromView('line', 'update', 'update_new_tab');
-        
-        
     }
+
     protected function generateAuthorizationCards($entry): string
     {
-        // Define los datos a mostrar en las tarjetas
         $campos = [
             'Nombre Contratista' => $entry->persona->nombre_contratista ?? 'N/A',
-            'Cédula/NIT' => $entry->persona->cedula_o_nit ?? 'N/A',
-            'Secretaría' => $entry->secretaria->nombre ?? 'N/A',
+            'Cedula/NIT' => $entry->persona->cedula_o_nit ?? 'N/A',
+            'Secretaria' => $entry->secretaria->nombre ?? 'N/A',
             'Gerencia' => $entry->gerencia->nombre ?? 'N/A',
-            'Fuente Financiación' => $entry->fuente->nombre ?? 'N/A',
-            'Valor Mensual' => '$'.number_format($entry->valor_mensual, 2, ',', '.') ?? 'N/A',
+            'Fuente Financiacion' => $entry->fuente->nombre ?? 'N/A',
+            'Valor Mensual' => '$'.number_format((float) ($entry->valor_mensual ?? 0), 2, ',', '.'),
             'Fecha Acta de Inicio' => $entry->fecha_acta_inicio ?? 'N/A',
-            'Fecha Finalización' => $entry->fecha_finalizacion ?? 'N/A',
-            'Tiempo Ejecución (días)' => $entry->tiempo_ejecucion_dias ?? 'N/A',
-            'Valor Total' => '$'.number_format($entry->valor_total, 2, ',', '.') ?? 'N/A',
-            'Adición (días)' => $entry->tiempo_ejecucion_dias_adicion ?? '0',
-            'Valor Total Contrato' => '$'.number_format($entry->valor_total_contrato, 2, ',', '.') ?? 'N/A',
+            'Fecha Finalizacion' => $entry->fecha_finalizacion ?? 'N/A',
+            'Tiempo Ejecucion (dias)' => $entry->tiempo_ejecucion_dias ?? 'N/A',
+            'Valor Total' => '$'.number_format((float) ($entry->valor_total ?? 0), 2, ',', '.'),
+            'Tiene Adicion' => ($entry->adicion ?? null) === 'SI' ? 'SI' : 'NO',
+            'Valor Total Contrato' => '$'.number_format((float) ($entry->valor_total_contrato ?? 0), 2, ',', '.'),
         ];
 
         $html = '<div class="pt-3 row">';
-        
         foreach ($campos as $label => $valor) {
-            // SOLUCIÓN MEJORADA: Usamos col-6 para móvil (2 por fila) y col-md-3 para desktop (4 por fila),
-            // lo que resulta en un diseño más espacioso y legible (3 filas en total para 12 campos).
+            $isResumenClave = in_array($label, ['Tiene Adicion', 'Valor Total Contrato'], true);
+            $cardClass = $isResumenClave ? 'border-info-subtle bg-info-subtle' : 'border-0';
+            $labelClass = $isResumenClave ? 'text-info-emphasis' : 'text-muted';
             $html .= '
-                <div class="mb-3 col-6 col-md-3"> 
+                <div class="mb-3 col-6 col-md-3">
+                    <div class="shadow-sm card h-100 '.$cardClass.'">
+                        <div class="px-3 py-2 card-body">
+                            <small class="'.$labelClass.' text-uppercase fw-normal d-block text-truncate" title="'.$label.'">'.$label.'</small>
+                            <div class="fw-bold fs-6">'.$valor.'</div>
+                        </div>
+                    </div>
+                </div>';
+        }
+        $html .= '</div>';
+
+        return $html;
+    }
+
+    protected function renderAdicionInfoCards($entry): string
+    {
+        $camposAdicion = [
+            'Fecha Inicio Adicion' => $entry->fecha_acta_inicio_adicion ?? 'N/A',
+            'Fecha Fin Adicion' => $entry->fecha_finalizacion_adicion ?? 'N/A',
+            'Tiempo Adicion (dias)' => $entry->tiempo_ejecucion_dias_adicion ?? 'N/A',
+            'Valor Adicion' => '$'.number_format((float) ($entry->valor_adicion ?? 0), 2, ',', '.'),
+        ];
+
+        $html = '<div class="pt-1 pb-2 row">';
+        foreach ($camposAdicion as $label => $valor) {
+            $html .= '
+                <div class="mb-2 col-6 col-md-3">
                     <div class="border-0 shadow-sm card h-100">
                         <div class="px-3 py-2 card-body">
                             <small class="text-muted text-uppercase fw-normal d-block text-truncate" title="'.$label.'">'.$label.'</small>
@@ -318,279 +284,274 @@ class AutorizacionCrudController extends CrudController
                     </div>
                 </div>';
         }
-        
         $html .= '</div>';
 
         return $html;
     }
-   
+
     protected function setupCreateOperation(): void
     {
         CRUD::setValidation(AutorizacionRequest::class);
-        
-        $entry = $this->crud->getCurrentEntry();
-        $user = backpack_user();
 
-        // 1. Mostrar campos informativos en formato tarjeta (SOLO LECTURA)
-        // Usa la función helper que el usuario confirmó que tenía la lógica correcta de col-md-3
+        $entry = $this->crud->getCurrentEntry();
+        $requestedPhase = request('fase') === 'adicion' ? 'adicion' : 'inicial';
+        $canEditDespacho = backpack_user()->hasAnyRole(['diana', 'admin']);
+        $canEditPlaneacion = backpack_user()->hasAnyRole(['bancos', 'diana', 'admin']);
+        $canEditAdministrativa = backpack_user()->hasAnyRole(['administrativa', 'diana', 'admin']);
+        $canEditEstadoAprobacion = backpack_user()->hasRole('bancos');
+        $canViewEstadoAprobacion = backpack_user()->hasAnyRole(['bancos', 'diana', 'admin']);
+        $canEditInitialBlock = $requestedPhase !== 'adicion';
+
         CRUD::addField([
             'name' => 'datos_autorizacion_read_only',
-            'label' => 'Información del Contrato',
+            'label' => 'Informacion del Contrato',
             'type' => 'custom_html',
             'value' => $this->generateAuthorizationCards($entry),
-            'wrapper' => ['class' => 'form-group col-12'], 
+            'wrapper' => ['class' => 'form-group col-12'],
         ]);
 
-       
+        CRUD::addField([
+            'name' => 'title_aut_inicial',
+            'type' => 'custom_html',
+            'value' => '<div id="bloque-autorizaciones-inicial" class="mt-2 mb-2"><h5 class="text-primary">Autorizaciones Iniciales</h5></div>',
+            'wrapper' => ['class' => 'form-group col-12'],
+        ]);
 
-        /**
-         * -----------------------------
-         * CAMPOS DE CONTRATO
-         * -----------------------------
-         */
-        
+        $this->addAuthorizationPhaseFields(
+            '',
+            'inicial',
+            $canEditInitialBlock ? $canEditDespacho : false,
+            $canEditInitialBlock ? $canEditPlaneacion : false,
+            $canEditInitialBlock ? $canEditAdministrativa : false,
+            $entry
+        );
 
-       
-         // ✅ 1. DESPACHO
-         $entry = $this->crud->getCurrentEntry(); // solo disponible en Update
-
-         // ----------------- 1. DESPACHO -----------------
-         $canEditDespacho = backpack_user()->hasRole(['diana','admin']);
-         if ($canEditDespacho) {
-             CRUD::addField([
-                 'name' => 'aut_despacho',
-                 'label' => 'Autorización 1',
-                 'type' => 'switch',
-                 'default' => 0,
-                 'wrapper' => ['class' => 'form-group col-md-2 contrato-field text-center'],
-             ]);
-         } else {
-             $value = $entry ? ($entry->aut_despacho ? '<div style="color:green; font-size:1.5rem;">Aut 1 ✔</div>' : '<div style="color:red; font-size:1.5rem;">Aut 1 ✖</div>') : '';
-             CRUD::addField([
-                 'name' => 'aut_despacho',
-                 'label' => 'Autorización 1',
-                 'type' => 'custom_html',
-                 'value' => $value,
-                 'wrapper' => ['class' => 'form-group col-md-2 contrato-field text-center'],
-             ]);
-         }
-         CRUD::addField([
-             'name' => 'fecha_aut_despacho',
-             'label' => '',
-             'type' => 'date',
-             'attributes' => ['style'=>'background-color:#f5f5f5;cursor:not-allowed;', 'readonly' => true],
-             'wrapper' => ['class' => 'form-group col-md-2 contrato-field'],
-         ]);
-         
-         // ----------------- 2. PLANEACIÓN -----------------
-         $canEditPlaneacion = backpack_user()->hasRole('bancos') || backpack_user()->hasRole(['diana','admin']);
-         if ($canEditPlaneacion) {
-             CRUD::addField([
-                 'name' => 'aut_planeacion',
-                 'label' => 'Autorización 2',
-                 'type' => 'switch',
-                 'default' => 0,
-                 'wrapper' => ['class' => 'form-group col-md-2 contrato-field text-center'],
-             ]);
-         } else {
-             $value = $entry ? ($entry->aut_planeacion ? '<div style="color:green; font-size:1.5rem;">Aut 2 ✔</div>' : '<div style="color:red; font-size:1.5rem;">Aut 2 ✖</div>') : '';
-             CRUD::addField([
-                 'name' => 'aut_planeacion',
-                 'label' => 'Autorización 2',
-                 'type' => 'custom_html',
-                 'value' => $value,
-                 'wrapper' => ['class' => 'form-group col-md-2 contrato-field text-center'],
-             ]);
-         }
-         CRUD::addField([
-             'name' => 'fecha_aut_planeacion',
-             'label' => '',
-             'type' => 'date',
-             'attributes' => ['style'=>'background-color:#f5f5f5;cursor:not-allowed;', 'readonly' => true],
-             'wrapper' => ['class' => 'form-group col-md-2 contrato-field'],
-         ]);
-         
-         // ----------------- 3. ADMINISTRATIVA -----------------
-         $canEditAdministrativa = backpack_user()->hasRole('administrativa') || backpack_user()->hasRole(['diana','admin']);
-         if ($canEditAdministrativa) {
-             CRUD::addField([
-                 'name' => 'aut_administrativa',
-                 'label' => 'Autorización 3',
-                 'type' => 'switch',
-                 'default' => 0,
-                 'wrapper' => ['class' => 'form-group col-md-2 contrato-field text-center'],
-             ]);
-         } else {
-             $value = $entry ? ($entry->aut_administrativa ? '<div style="color:green; font-size:1.5rem;">Aut 3 ✔</div>' : '<div style="color:red; font-size:1.5rem;">Aut 3 ✖</div>') : '';
-             CRUD::addField([
-                 'name' => 'aut_administrativa',
-                 'label' => 'Autorización 3',
-                 'type' => 'custom_html',
-                 'value' => $value,
-                 'wrapper' => ['class' => 'form-group col-md-2 contrato-field text-center'],
-             ]);
-         }
-         CRUD::addField([
-             'name' => 'fecha_aut_administrativa',
-             'label' => '',
-             'type' => 'date',
-             'attributes' => ['style'=>'background-color:#f5f5f5;cursor:not-allowed;', 'readonly' => true],
-             'wrapper' => ['class' => 'form-group col-md-2 contrato-field'],
-         ]);
-
-         if ($canEditPlaneacion) {
+        if ($canEditEstadoAprobacion && $canEditInitialBlock) {
             CRUD::addField([
                 'name'  => 'estado_aprobacion',
-                'label' => 'Estado de Aprobación',
+                'label' => 'Estado de Aprobacion',
                 'type'  => 'select2_from_array',
                 'options' => [
                     'mayor'  => 'Mayor valor al aprobado.',
-                    'menor'  => 'Menor Valor al aprobado.',
-                    'sin'    => 'Sin Aprobación',
+                    'menor'  => 'Menor valor al aprobado.',
+                    'sin'    => 'Sin aprobacion',
                 ],
                 'allows_null' => true,
                 'wrapper' => ['class' => 'form-group col-md-4'],
             ]);
-        } else {
-            
+        } elseif ($canViewEstadoAprobacion) {
+            CRUD::addField([
+                'name' => 'estado_aprobacion_readonly',
+                'label' => 'Estado de Aprobacion',
+                'type' => 'custom_html',
+                'value' => '<div class="form-control bg-light">'.e($entry?->getEstadoAprobacionShort() ?: 'Sin estado').'</div>',
+                'wrapper' => ['class' => 'form-group col-md-4'],
+            ]);
         }
-         
-         
 
-         /**
-         * -----------------------------
-         * JS: mostrar/ocultar + fechas autorizaciones
-         * -----------------------------
-         */
+        $hasAdicion = $entry && $entry->adicion === 'SI';
+        $canEditAdicionBlock = $requestedPhase === 'adicion';
+
         CRUD::addField([
-            'name' => 'script_toggle_tipo',
+            'name' => 'title_aut_adicion',
             'type' => 'custom_html',
-            'value' => '
-                <script>
-                    function toggleFields() {
-                        var tipo = document.querySelector("[name=tipo]").value;
-                        document.querySelectorAll(".contrato-field").forEach(el => {
-                            el.style.display = (tipo === "contrato") ? "block" : "none";
-                        });
-                        document.querySelectorAll(".entrevista-field").forEach(el => {
-                            el.style.display = (tipo === "entrevista") ? "block" : "none";
-                        });
-                    }
-        
-                    document.addEventListener("DOMContentLoaded", function() {
-                        toggleFields();
-                        document.querySelector("[name=tipo]").addEventListener("change", toggleFields);
-                    });
-                </script>
-            ',
+            'value' => '<div id="bloque-autorizaciones-adicion" class="mt-3 mb-2"><h5 class="text-info">Autorizaciones Adicion</h5></div>',
+            'wrapper' => ['class' => 'form-group col-12'],
         ]);
-        
-       
+
+        if ($hasAdicion) {
+            CRUD::addField([
+                'name' => 'datos_adicion_read_only',
+                'type' => 'custom_html',
+                'value' => $this->renderAdicionInfoCards($entry),
+                'wrapper' => ['class' => 'form-group col-12'],
+            ]);
+            $this->addAuthorizationPhaseFields(
+                '_adicion',
+                'adicion',
+                $canEditAdicionBlock ? $canEditDespacho : false,
+                $canEditAdicionBlock ? $canEditPlaneacion : false,
+                $canEditAdicionBlock ? $canEditAdministrativa : false,
+                $entry
+            );
+
+            if ($canEditEstadoAprobacion && $canEditAdicionBlock) {
+                CRUD::addField([
+                    'name'  => 'estado_aprobacion_adicion',
+                    'label' => 'Estado de Aprobacion (Adicion)',
+                    'type'  => 'select2_from_array',
+                    'options' => [
+                        'mayor'  => 'Mayor valor al aprobado.',
+                        'menor'  => 'Menor valor al aprobado.',
+                        'sin'    => 'Sin aprobacion',
+                    ],
+                    'allows_null' => true,
+                    'wrapper' => ['class' => 'form-group col-md-4'],
+                ]);
+            } elseif ($canViewEstadoAprobacion) {
+                CRUD::addField([
+                    'name' => 'estado_aprobacion_adicion_readonly',
+                    'label' => 'Estado de Aprobacion (Adicion)',
+                    'type' => 'custom_html',
+                    'value' => '<div class="form-control bg-light">'.e($entry?->getEstadoAprobacionAdicionShort() ?: 'Sin estado').'</div>',
+                    'wrapper' => ['class' => 'form-group col-md-4'],
+                ]);
+            }
+        } else {
+            CRUD::addField([
+                'name' => 'autorizacion_adicion_no_aplica',
+                'type' => 'custom_html',
+                'value' => '<div class="alert alert-light border">No aplica: este contrato no tiene adicion activa.</div>',
+                'wrapper' => ['class' => 'form-group col-12'],
+            ]);
+        }
+
         CRUD::addField([
             'name' => 'script_autorizaciones',
             'type' => 'custom_html',
             'value' => '
                 <script>
                 document.addEventListener("DOMContentLoaded", function() {
-                    console.log("Script de autorizaciones activo");
-        
                     function bindFecha(autoName, fechaName) {
-                        const checkbox = document.querySelector("[name=\'" + autoName + "\']");
-                        const fechaInput = document.querySelector("[name=\'" + fechaName + "\']");
-        
+                        var checkbox = document.querySelector("[name=\'" + autoName + "\']");
+                        var fechaInput = document.querySelector("[name=\'" + fechaName + "\']");
                         if (!checkbox || !fechaInput) {
-                            console.warn("No encontrados:", autoName, fechaName);
                             return;
                         }
-        
                         checkbox.addEventListener("change", function() {
-                            console.log("Cambio detectado en:", autoName);
-        
                             if (this.checked && !fechaInput.value) {
-                                const hoy = new Date().toISOString().split("T")[0];
-                                fechaInput.value = hoy;
-                                console.log("Fecha asignada:", hoy);
+                                fechaInput.value = new Date().toISOString().split("T")[0];
                             }
                         });
                     }
-        
+
                     bindFecha("aut_despacho", "fecha_aut_despacho");
                     bindFecha("aut_planeacion", "fecha_aut_planeacion");
                     bindFecha("aut_administrativa", "fecha_aut_administrativa");
+                    bindFecha("aut_despacho_adicion", "fecha_aut_despacho_adicion");
+                    bindFecha("aut_planeacion_adicion", "fecha_aut_planeacion_adicion");
+                    bindFecha("aut_administrativa_adicion", "fecha_aut_administrativa_adicion");
+
+                    var fase = "'.e((string) request('fase', '')).'";
+                    if (fase === "adicion") {
+                        var target = document.getElementById("bloque-autorizaciones-adicion");
+                        if (target) {
+                            target.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }
+                    }
                 });
                 </script>
             ',
+            'wrapper' => ['class' => 'form-group col-12'],
         ]);
-        
-        
-        CRUD::addField([
-            'name'  => 'filtrado_js',
-            'type'  => 'custom_html',
-            'value' => '<script>
-                document.addEventListener("DOMContentLoaded", function() {
-                    const secretaria = document.querySelector("[name=secretaria_id]");
-                    const gerencia   = document.querySelector("[name=gerencia_id]");
-    
-                    function cargarGerencias(secretariaId) {
-                        if (!secretariaId) return;
-                        fetch("/admin/gerencias-por-secretaria/" + secretariaId)
-                            .then(res => res.json())
-                            .then(data => {
-                                gerencia.innerHTML = "";
-                                data.forEach(item => {
-                                    const option = document.createElement("option");
-                                    option.value = item.id;
-                                    option.text  = item.text;
-                                    gerencia.appendChild(option);
-                                });
-                            });
-                    }
-    
-                    secretaria?.addEventListener("change", function() {
-                        cargarGerencias(this.value);
-                    });
-    
-                    // Si ya hay valor al cargar (edición)
-                    if (secretaria?.value) {
-                        cargarGerencias(secretaria.value);
-                    }
-                });
-            </script>',
-        ]);
-
-       
-       
-
-
     }
+
     protected function setupUpdateOperation(): void
     {
         $this->setupCreateOperation();
     }
 
-    
-
-    // Funciones de iconos
-    public function getAutDespachoIcon($entry)
+    protected function setupShowOperation(): void
     {
-        return $entry->aut_despacho ? '<span style="color:green;">✔</span>' : '<span style="color:red;">✖</span>';
+        $this->crud->set('show.setFromDb', false);
+
+        $this->crud->addColumn([
+            'name' => 'autorizaciones_show',
+            'label' => 'Autorizaciones',
+            'type' => 'closure',
+            'escaped' => false,
+            'function' => function ($entry) {
+                $map = fn ($v) => $v ? 'Aprobado' : 'Pendiente';
+
+                $html = '<div class="row">';
+                $html .= '<div class="col-md-6"><div class="card"><div class="card-header bg-primary text-white">Inicial</div><div class="card-body">';
+                $html .= '<p>Aut 1: '.$map((bool) $entry->aut_despacho).'</p>';
+                $html .= '<p>Aut 2: '.$map((bool) $entry->aut_planeacion).'</p>';
+                $html .= '<p>Aut 3: '.$map((bool) $entry->aut_administrativa).'</p>';
+                $html .= '</div></div></div>';
+
+                if ($entry->adicion === 'SI') {
+                    $html .= '<div class="col-md-6"><div class="card"><div class="card-header bg-info text-white">Adicion</div><div class="card-body">';
+                    $html .= '<p>Aut 1: '.$map((bool) $entry->aut_despacho_adicion).'</p>';
+                    $html .= '<p>Aut 2: '.$map((bool) $entry->aut_planeacion_adicion).'</p>';
+                    $html .= '<p>Aut 3: '.$map((bool) $entry->aut_administrativa_adicion).'</p>';
+                    $html .= '</div></div></div>';
+                }
+
+                $html .= '</div>';
+                return $html;
+            },
+        ]);
     }
 
-    public function getAutPlaneacionIcon($entry)
-    {
-        return $entry->aut_planeacion ? '<span style="color:green;">✔</span>' : '<span style="color:red;">✖</span>';
+    protected function addAuthorizationPhaseFields(
+        string $suffix,
+        string $phaseLabel,
+        bool $canEditDespacho,
+        bool $canEditPlaneacion,
+        bool $canEditAdministrativa,
+        $entry
+    ): void {
+        $prefixLabel = ucfirst($phaseLabel);
+
+        $this->addAuthorizationField('aut_despacho'.$suffix, 'Autorizacion 1 ('.$prefixLabel.')', $canEditDespacho, $entry, 'aut_despacho'.$suffix, 'col-md-2');
+        $this->addDateReadonlyField('fecha_aut_despacho'.$suffix, 'col-md-2');
+
+        $this->addAuthorizationField('aut_planeacion'.$suffix, 'Autorizacion 2 ('.$prefixLabel.')', $canEditPlaneacion, $entry, 'aut_planeacion'.$suffix, 'col-md-2');
+        $this->addDateReadonlyField('fecha_aut_planeacion'.$suffix, 'col-md-2');
+
+        $this->addAuthorizationField('aut_administrativa'.$suffix, 'Autorizacion 3 ('.$prefixLabel.')', $canEditAdministrativa, $entry, 'aut_administrativa'.$suffix, 'col-md-2');
+        $this->addDateReadonlyField('fecha_aut_administrativa'.$suffix, 'col-md-2');
     }
 
-    public function getAutAdministrativaIcon($entry)
+    protected function addAuthorizationField(string $name, string $label, bool $canEdit, $entry, string $entryField, string $wrapperClass): void
     {
-        return $entry->aut_administrativa ? '<span style="color:green;">✔</span>' : '<span style="color:red;">✖</span>';
+        if ($canEdit) {
+            CRUD::addField([
+                'name' => $name,
+                'label' => $label,
+                'type' => 'switch',
+                'default' => 0,
+                'wrapper' => ['class' => 'form-group '.$wrapperClass.' text-center'],
+            ]);
+            return;
+        }
+
+        $isChecked = $entry ? (bool) ($entry->{$entryField} ?? false) : false;
+        $value = $isChecked
+            ? '<div style="color:green; font-size:1.5rem;">✔</div>'
+            : '<div style="color:red; font-size:1.5rem;">✖</div>';
+
+        CRUD::addField([
+            'name' => $name.'_readonly',
+            'label' => $label,
+            'type' => 'custom_html',
+            'value' => $value,
+            'wrapper' => ['class' => 'form-group '.$wrapperClass.' text-center'],
+        ]);
     }
+
+    protected function addDateReadonlyField(string $name, string $wrapperClass): void
+    {
+        CRUD::addField([
+            'name' => $name,
+            'label' => '',
+            'type' => 'date',
+            'attributes' => ['readonly' => true, 'style' => 'background-color:#f5f5f5;cursor:not-allowed;'],
+            'wrapper' => ['class' => 'form-group '.$wrapperClass],
+        ]);
+    }
+
     public function update(Request $request)
     {
-        foreach (['despacho','planeacion','administrativa'] as $suf) {
-            $auto  = "aut_$suf";
-            $fecha = "fecha_aut_$suf";
-
+        foreach ([
+            ['aut_despacho', 'fecha_aut_despacho'],
+            ['aut_planeacion', 'fecha_aut_planeacion'],
+            ['aut_administrativa', 'fecha_aut_administrativa'],
+            ['aut_despacho_adicion', 'fecha_aut_despacho_adicion'],
+            ['aut_planeacion_adicion', 'fecha_aut_planeacion_adicion'],
+            ['aut_administrativa_adicion', 'fecha_aut_administrativa_adicion'],
+        ] as [$auto, $fecha]) {
             if ($request->boolean($auto) && !$request->filled($fecha)) {
                 $request->merge([$fecha => now()->format('Y-m-d')]);
             }
@@ -602,18 +563,21 @@ class AutorizacionCrudController extends CrudController
     public function updateEstadoAprobacion(Request $request, $id)
     {
         $user = backpack_user();
-        if (!$user || !$user->hasAnyRole(['bancos','diana','admin'])) {
+        if (!$user || !$user->hasRole('bancos')) {
             abort(403, 'No tienes permisos para actualizar este estado');
         }
 
         $value = $request->input('value');
         $allowed = ['mayor', 'menor', 'sin', null, ''];
         if (!in_array($value, $allowed, true)) {
-            abort(422, 'Estado inválido');
+            abort(422, 'Estado invalido');
         }
 
-        $entry = \App\Models\Autorizacion::findOrFail($id);
-        $entry->estado_aprobacion = $value === '' ? null : $value;
+        $fase = $request->input('fase') === 'adicion' ? 'adicion' : 'inicial';
+        $targetField = $fase === 'adicion' ? 'estado_aprobacion_adicion' : 'estado_aprobacion';
+
+        $entry = Autorizacion::findOrFail($id);
+        $entry->{$targetField} = $value === '' ? null : $value;
         $entry->save();
 
         return redirect()->back();
@@ -623,13 +587,12 @@ class AutorizacionCrudController extends CrudController
     {
         $term = $request->input('q');
 
-        $query = \App\Models\Persona::query()
-            ->selectRaw("id, CONCAT(nombre_contratista, ' - ', COALESCE(cedula_o_nit,'')) as display_name");
+        $query = Persona::query()->selectRaw("id, CONCAT(nombre_contratista, ' - ', COALESCE(cedula_o_nit,'')) as display_name");
 
         if ($term) {
             $query->where(function ($q) use ($term) {
                 $q->where('nombre_contratista', 'like', "%{$term}%")
-                  ->orWhere('cedula_o_nit', 'like', "%{$term}%");
+                    ->orWhere('cedula_o_nit', 'like', "%{$term}%");
             });
         }
 
@@ -639,44 +602,74 @@ class AutorizacionCrudController extends CrudController
     public function togglePlaneacion(Request $request, $id)
     {
         $user = backpack_user();
-        if (!$user || !$user->hasRole('bancos')) {
-            abort(403, 'No tienes permisos para actualizar esta autorización');
+        if (!$user || !$user->hasAnyRole(['administrativa', 'bancos', 'diana', 'admin'])) {
+            abort(403, 'No tienes permisos para actualizar esta autorizacion');
         }
 
-        $entry = \App\Models\Autorizacion::findOrFail($id);
-
+        $entry = Autorizacion::findOrFail($id);
         $value = $request->boolean('value');
-        $entry->aut_planeacion = $value;
+        $fase = $request->input('fase') === 'adicion' ? 'adicion' : 'inicial';
 
-        if ($value && empty($entry->fecha_aut_planeacion)) {
-            $entry->fecha_aut_planeacion = Carbon::now()->toDateString();
+        if ($fase === 'adicion') {
+            $entry->aut_planeacion_adicion = $value;
+            if ($value && empty($entry->fecha_aut_planeacion_adicion)) {
+                $entry->fecha_aut_planeacion_adicion = Carbon::now()->toDateString();
+            }
+        } else {
+            $entry->aut_planeacion = $value;
+            if ($value && empty($entry->fecha_aut_planeacion)) {
+                $entry->fecha_aut_planeacion = Carbon::now()->toDateString();
+            }
         }
 
         $entry->save();
 
         return redirect()->back();
     }
-    public function store()
+
+    public function toggleAutorizacion(Request $request, $id)
     {
-        $data = $this->crud->getRequest()->all();
-        $now = Carbon::now()->toDateString();
+        $entry = Autorizacion::findOrFail($id);
+        $user = backpack_user();
 
-        if (isset($data['aut_despacho']) && backpack_user()->hasRole('diana')) {
-            $data['fecha_aut_despacho'] = $now;
-        }
-        if (isset($data['aut_planeacion']) && backpack_user()->hasRole('bancos')) {
-            $data['fecha_aut_planeacion'] = $now;
-        }
-        if (isset($data['aut_administrativa']) && backpack_user()->hasRole('administrativa')) {
-            $data['fecha_aut_administrativa'] = $now;
+        $field = (string) $request->input('field');
+        $fase = $request->input('fase') === 'adicion' ? 'adicion' : 'inicial';
+        $value = $request->boolean('value');
+
+        $allowedFields = ['aut_despacho', 'aut_planeacion', 'aut_administrativa'];
+        if (!in_array($field, $allowedFields, true)) {
+            abort(422, 'Campo no permitido');
         }
 
-        $this->crud->getRequest()->replace($data);
+        $canEdit = false;
+        if ($field === 'aut_despacho') {
+            $canEdit = $user && $user->hasAnyRole(['diana', 'admin']);
+        } elseif ($field === 'aut_planeacion') {
+            $canEdit = $user && $user->hasAnyRole(['administrativa', 'bancos', 'diana', 'admin']);
+        } elseif ($field === 'aut_administrativa') {
+            $canEdit = $user && $user->hasAnyRole(['administrativa', 'diana', 'admin']);
+        }
 
-        return $this->traitStore();
+        if (!$canEdit) {
+            abort(403, 'No tienes permisos para actualizar esta autorizacion');
+        }
+
+        $targetField = $fase === 'adicion' ? ($field.'_adicion') : $field;
+        $dateFieldMap = [
+            'aut_despacho' => 'fecha_aut_despacho',
+            'aut_planeacion' => 'fecha_aut_planeacion',
+            'aut_administrativa' => 'fecha_aut_administrativa',
+        ];
+        $targetDate = $fase === 'adicion'
+            ? ($dateFieldMap[$field].'_adicion')
+            : $dateFieldMap[$field];
+
+        $entry->{$targetField} = $value;
+        if ($value && empty($entry->{$targetDate})) {
+            $entry->{$targetDate} = Carbon::now()->toDateString();
+        }
+        $entry->save();
+
+        return redirect()->back();
     }
-
- 
-
-
 }

@@ -149,6 +149,9 @@ class SeguimientoImport implements
             'fecha_aut_despacho'       => $this->cleanDate($row['fecha_aut_despacho'] ?? null),
             'fecha_aut_planeacion'     => $this->cleanDate($row['fecha_aut_planeacion'] ?? null),
             'fecha_aut_administrativa' => $this->cleanDate($row['fecha_aut_administrativa'] ?? null),
+            'fecha_aut_despacho_adicion'       => $this->cleanDate($row['fecha_aut_despacho_adicion'] ?? null),
+            'fecha_aut_planeacion_adicion'     => $this->cleanDate($row['fecha_aut_planeacion_adicion'] ?? null),
+            'fecha_aut_administrativa_adicion' => $this->cleanDate($row['fecha_aut_administrativa_adicion'] ?? null),
 
             'fecha_acta_inicio_adicion'  => $this->cleanDate($row['fecha_acta_inicio_adicion'] ?? null),
             'fecha_finalizacion_adicion' => $this->cleanDate($row['fecha_finalizacion_adicion'] ?? null),
@@ -168,6 +171,9 @@ class SeguimientoImport implements
             'aut_despacho'       => $this->cleanBool($row['aut_despacho'] ?? null),
             'aut_planeacion'     => $this->cleanBool($row['aut_planeacion'] ?? null),
             'aut_administrativa' => $this->cleanBool($row['aut_administrativa'] ?? null),
+            'aut_despacho_adicion'       => $this->cleanBool($row['aut_despacho_adicion'] ?? null),
+            'aut_planeacion_adicion'     => $this->cleanBool($row['aut_planeacion_adicion'] ?? null),
+            'aut_administrativa_adicion' => $this->cleanBool($row['aut_administrativa_adicion'] ?? null),
 
             'adicion'                => $row['adicion'] ?? null,
             'observaciones_contrato' => $row['observaciones_contrato'] ?? null,

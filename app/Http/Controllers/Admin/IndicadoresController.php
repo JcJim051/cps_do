@@ -274,6 +274,13 @@ class IndicadoresController extends Controller
                 'wrapper' => ['class' => 'col-12 col-md-4 mb-3'],
                 'title' => 'Personas por Campaña',
             ]),
+            Widget::make([
+                'type' => 'card',
+                'wrapper' => ['class' => 'col-12 mb-3'],
+                'content' => [
+                    'body' => $this->renderAutorizacionesPorDiaTable($year),
+                ],
+            ]),
         ]);
 
         return view(backpack_view('blank'), [
@@ -283,5 +290,127 @@ class IndicadoresController extends Controller
                 'Indicadores' => false,
             ],
         ]);
+    }
+
+    private function renderAutorizacionesPorDiaTable(int $year): string
+    {
+        $base = Seguimiento::query()
+            ->where('tipo', 'contrato')
+            ->where('anio', $year);
+
+        $rowsInicial = $this->buildDailyRows(clone $base, false);
+        $rowsAdicion = $this->buildDailyRows((clone $base)->where('adicion', 'SI'), true);
+
+        $renderRows = function (array $rows): string {
+            if (empty($rows)) {
+                return '<tr><td colspan="5" class="text-center text-muted">Sin movimientos</td></tr>';
+            }
+
+            $html = '';
+            foreach ($rows as $row) {
+                $html .= '<tr>';
+                $html .= '<td>'.e($row['fecha']).'</td>';
+                $html .= '<td class="text-center">'.e((string) $row['aut1']).'</td>';
+                $html .= '<td class="text-center">'.e((string) $row['aut2']).'</td>';
+                $html .= '<td class="text-center">'.e((string) $row['aut3']).'</td>';
+                $html .= '<td class="text-center fw-bold">'.e((string) $row['total']).'</td>';
+                $html .= '</tr>';
+            }
+            return $html;
+        };
+
+        return '
+            <h5 class="mb-2">Autorizaciones por dia (Ano '.$year.')</h5>
+            <p class="mb-3 text-muted">Conteo diario de contratos/adiciones autorizados por cada paso.</p>
+            <div class="row">
+                <div class="mb-3 col-12 col-xl-6 mb-xl-0">
+                    <h6 class="mb-2">Inicial</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th class="text-center">Aut 1</th>
+                                    <th class="text-center">Aut 2</th>
+                                    <th class="text-center">Aut 3</th>
+                                    <th class="text-center">Total dia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                '.$renderRows($rowsInicial).'
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-12 col-xl-6">
+                    <h6 class="mb-2">Adicion</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th class="text-center">Aut 1</th>
+                                    <th class="text-center">Aut 2</th>
+                                    <th class="text-center">Aut 3</th>
+                                    <th class="text-center">Total dia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                '.$renderRows($rowsAdicion).'
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        ';
+    }
+
+    private function buildDailyRows($baseQuery, bool $isAdicion): array
+    {
+        $fAut1 = $isAdicion ? 'fecha_aut_despacho_adicion' : 'fecha_aut_despacho';
+        $fAut2 = $isAdicion ? 'fecha_aut_planeacion_adicion' : 'fecha_aut_planeacion';
+        $fAut3 = $isAdicion ? 'fecha_aut_administrativa_adicion' : 'fecha_aut_administrativa';
+
+        $aut1 = (clone $baseQuery)
+            ->whereNotNull($fAut1)
+            ->selectRaw("{$fAut1} as fecha, COUNT(*) as total")
+            ->groupBy($fAut1)
+            ->pluck('total', 'fecha');
+
+        $aut2 = (clone $baseQuery)
+            ->whereNotNull($fAut2)
+            ->selectRaw("{$fAut2} as fecha, COUNT(*) as total")
+            ->groupBy($fAut2)
+            ->pluck('total', 'fecha');
+
+        $aut3 = (clone $baseQuery)
+            ->whereNotNull($fAut3)
+            ->selectRaw("{$fAut3} as fecha, COUNT(*) as total")
+            ->groupBy($fAut3)
+            ->pluck('total', 'fecha');
+
+        return collect()
+            ->merge($aut1->keys())
+            ->merge($aut2->keys())
+            ->merge($aut3->keys())
+            ->filter()
+            ->unique()
+            ->sortDesc()
+            ->map(function ($fecha) use ($aut1, $aut2, $aut3) {
+                $a1 = (int) ($aut1[$fecha] ?? 0);
+                $a2 = (int) ($aut2[$fecha] ?? 0);
+                $a3 = (int) ($aut3[$fecha] ?? 0);
+
+                return [
+                    'fecha' => \Carbon\Carbon::parse($fecha)->format('Y-m-d'),
+                    'aut1' => $a1,
+                    'aut2' => $a2,
+                    'aut3' => $a3,
+                    'total' => $a1 + $a2 + $a3,
+                ];
+            })
+            ->take(20)
+            ->values()
+            ->all();
     }
 }

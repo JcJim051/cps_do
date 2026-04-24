@@ -62,6 +62,8 @@ Route::group([
         ->name('autorizacion.updateEstadoAprobacion');
     Route::post('autorizacion/{id}/toggle-planeacion', 'AutorizacionCrudController@togglePlaneacion')
         ->name('autorizacion.togglePlaneacion');
+    Route::post('autorizacion/{id}/toggle-autorizacion', 'AutorizacionCrudController@toggleAutorizacion')
+        ->name('autorizacion.toggleAutorizacion');
     Route::crud('programas', 'ProgramasCrudController');
     Route::crud('equipo-campania', 'EquipoCampaniaCrudController');
 

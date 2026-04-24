@@ -1,5 +1,5 @@
 @if ($crud->hasAccess('update'))
-    <a href="{{ url($crud->route.'/'.$entry->getKey().'/edit') }}" 
+    <a href="{{ url($crud->route.'/'.$entry->getKey().'/edit').'?fase='.(($entry->fase_listado ?? 'inicial')) }}" 
        class="btn btn-sm btn-link" 
        data-toggle="tooltip" 
        title="{{ trans('backpack::crud.edit') }}"

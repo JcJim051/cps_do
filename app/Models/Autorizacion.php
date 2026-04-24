@@ -26,15 +26,24 @@ class Autorizacion extends Model
         'aut_despacho' => 'boolean',
         'aut_planeacion' => 'boolean',
         'aut_administrativa' => 'boolean',
+        'aut_despacho_adicion' => 'boolean',
+        'aut_planeacion_adicion' => 'boolean',
+        'aut_administrativa_adicion' => 'boolean',
         'fecha_aut_despacho' => 'date',
         'fecha_aut_planeacion' => 'date',
         'fecha_aut_administrativa' => 'date',
+        'fecha_aut_despacho_adicion' => 'date',
+        'fecha_aut_planeacion_adicion' => 'date',
+        'fecha_aut_administrativa_adicion' => 'date',
     ];
 
     protected $fillable = [
         'persona_id', 'secretaria_id', 'gerencia_id',
         'aut_despacho', 'aut_planeacion', 'aut_administrativa',
-        'fecha_aut_despacho', 'fecha_aut_planeacion', 'fecha_aut_administrativa','estado_aprobacion',
+        'aut_despacho_adicion', 'aut_planeacion_adicion', 'aut_administrativa_adicion',
+        'fecha_aut_despacho', 'fecha_aut_planeacion', 'fecha_aut_administrativa',
+        'fecha_aut_despacho_adicion', 'fecha_aut_planeacion_adicion', 'fecha_aut_administrativa_adicion',
+        'estado_aprobacion', 'estado_aprobacion_adicion',
     ];
     // protected $fillable = [];
     // protected $hidden = [];
@@ -68,23 +77,26 @@ class Autorizacion extends Model
         return $this->belongsTo(\App\Models\Gerencia::class, 'gerencia_id');
     }   
 
-        public function getAutDespachoIcon()
+    public function getAutDespachoIcon()
     {
-        return $this->aut_despacho 
+        $value = $this->fase_listado === 'adicion' ? $this->aut_despacho_adicion : $this->aut_despacho;
+        return $value
             ? '<span style="color:green;">✔</span>' 
             : '<span style="color:red;">✖</span>';
     }
 
     public function getAutPlaneacionIcon()
     {
-        return $this->aut_planeacion 
+        $value = $this->fase_listado === 'adicion' ? $this->aut_planeacion_adicion : $this->aut_planeacion;
+        return $value
             ? '<span style="color:green;">✔</span>' 
             : '<span style="color:red;">✖</span>';
     }
 
     public function getAutAdministrativaIcon()
     {
-        return $this->aut_administrativa 
+        $value = $this->fase_listado === 'adicion' ? $this->aut_administrativa_adicion : $this->aut_administrativa;
+        return $value
             ? '<span style="color:green;">✔</span>' 
             : '<span style="color:red;">✖</span>';
     }
@@ -118,6 +130,17 @@ class Autorizacion extends Model
         ];
     
         return $map[$this->estado_aprobacion] ?? $this->estado_aprobacion;
+    }
+
+    public function getEstadoAprobacionAdicionShort()
+    {
+        $map = [
+            'mayor' => 'Mayor',
+            'menor' => 'Menor',
+            'sin'   => 'Sin',
+        ];
+
+        return $map[$this->estado_aprobacion_adicion] ?? $this->estado_aprobacion_adicion;
     }
     public function getNombreResaltadoTooltip(): string
     {

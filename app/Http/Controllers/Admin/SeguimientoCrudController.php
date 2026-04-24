@@ -326,6 +326,38 @@ class SeguimientoCrudController extends CrudController
                     'title'   => '{{ $entry->secretaria->nombre ?? "" }}',
                 ],
             ],
+            [
+                'name'  => 'gerencia',
+                'label' => 'Gerencia',
+                'type'  => 'relationship',
+                'attribute' => 'nombre',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('gerencia', function ($q) use ($searchTerm) {
+                        $q->where('nombre', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style'   => 'max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title'   => '{{ $entry->gerencia->nombre ?? "" }}',
+                ],
+            ],
+            [
+                'name'  => 'fuente',
+                'label' => 'Fuente de Financiación',
+                'type'  => 'relationship',
+                'attribute' => 'nombre',
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('fuente', function ($q) use ($searchTerm) {
+                        $q->where('nombre', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style'   => 'max-width:140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'title'   => '{{ $entry->fuente->nombre ?? "" }}',
+                ],
+            ],
          
         ]);
 
@@ -655,28 +687,51 @@ class SeguimientoCrudController extends CrudController
                     const secretaria = document.querySelector("[name=secretaria_id]");
                     const gerencia   = document.querySelector("[name=gerencia_id]");
     
-                    function cargarGerencias(secretariaId) {
-                        if (!secretariaId) return;
+                    function cargarGerencias(secretariaId, selectedId = null) {
+                        if (!gerencia) return;
+                        if (!secretariaId) {
+                            gerencia.innerHTML = "";
+                            return;
+                        }
+
                         fetch("/admin/gerencias-por-secretaria/" + secretariaId)
                             .then(res => res.json())
                             .then(data => {
+                                const currentText = gerencia.options[gerencia.selectedIndex]?.text || "";
                                 gerencia.innerHTML = "";
+
                                 data.forEach(item => {
                                     const option = document.createElement("option");
                                     option.value = item.id;
                                     option.text  = item.text;
+                                    if (selectedId && String(item.id) === String(selectedId)) {
+                                        option.selected = true;
+                                    }
                                     gerencia.appendChild(option);
                                 });
+
+                                // Si no vino en catálogo pero existía valor en edición, lo conservamos visualmente.
+                                if (selectedId && !Array.from(gerencia.options).some(o => String(o.value) === String(selectedId))) {
+                                    const fallback = document.createElement("option");
+                                    fallback.value = selectedId;
+                                    fallback.text = currentText || ("Gerencia " + selectedId);
+                                    fallback.selected = true;
+                                    gerencia.appendChild(fallback);
+                                }
+
+                                gerencia.dispatchEvent(new Event("change"));
                             });
                     }
     
                     secretaria?.addEventListener("change", function() {
-                        cargarGerencias(this.value);
+                        // Cambio manual de secretaría: recargar sin forzar selección previa.
+                        cargarGerencias(this.value, null);
                     });
     
                     // Si ya hay valor al cargar (edición)
                     if (secretaria?.value) {
-                        cargarGerencias(secretaria.value);
+                        const selectedGerencia = gerencia?.value || null;
+                        cargarGerencias(secretaria.value, selectedGerencia);
                     }
                 });
             </script>',
@@ -805,6 +860,12 @@ class SeguimientoCrudController extends CrudController
                     'Aut. Planeación' => $entry->aut_planeacion ? '✅' : '❌',
                     'Aut. Administrativa' => $entry->aut_administrativa ? '✅' : '❌',
                 ];
+
+                if ($entry->adicion === 'SI') {
+                    $autorizaciones['Aut. Despacho Adición'] = $entry->aut_despacho_adicion ? '✅' : '❌';
+                    $autorizaciones['Aut. Planeación Adición'] = $entry->aut_planeacion_adicion ? '✅' : '❌';
+                    $autorizaciones['Aut. Administrativa Adición'] = $entry->aut_administrativa_adicion ? '✅' : '❌';
+                }
     
                 $entrevista = [
                     'Fecha Entrevista' => $entry->fecha_entrevista,
