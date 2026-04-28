@@ -302,6 +302,16 @@ class PersonaCrudController extends CrudController
                 $query->orWhere('maestria', 'like', '%'.$searchTerm.'%');
             },
         ]);
+
+        CRUD::addColumn([
+            'name' => 'especializacion',
+            'label' => 'Especialización',
+            'type' => 'text',
+            'wrapper' => ['style' => 'font-size:13px; white-space:normal;'],
+            'searchLogic' => function ($query, $column, $searchTerm) {
+                $query->orWhere('especializacion', 'like', '%'.$searchTerm.'%');
+            },
+        ]);
         $this->crud->addButtonFromView('top', 'import', 'import_button', 'end'); // 'import_button' es el nombre de la vista que se crea abajo
         // ...
         // 🔧 Script para tooltips, una sola vez

@@ -6,7 +6,12 @@ use App\Http\Requests\ProgramasRequest;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use App\Http\Requests\ProgramaRequest;
-
+use App\Imports\ProgramaImport;
+use App\Exports\ProgramaTemplateExport;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
+use Alert;
 
 
 
@@ -72,6 +77,7 @@ class ProgramasCrudController extends CrudController
         | EXPORTACIONES
         |--------------------------------------------------------------------------
         */
+        $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end');
         $this->crud->enableExportButtons();
     
         /*
@@ -240,6 +246,53 @@ class ProgramasCrudController extends CrudController
         ], false, fn ($value) =>
             CRUD::addClause('where', 'ref_2', 'LIKE', "%{$value}%")
         );
+    }
+
+    public function importForm()
+    {
+        $this->crud->hasAccessOrFail('create');
+
+        $this->data['crud'] = $this->crud;
+        $this->data['title'] = 'Importar Programas';
+        $this->data['importFailures'] = session('importFailures', []);
+
+        return view('admin.programas.import', $this->data);
+    }
+
+    public function import(Request $request)
+    {
+        $this->crud->hasAccessOrFail('create');
+
+        $request->validate([
+            'file' => 'required|file|mimes:xls,xlsx,csv',
+        ], [
+            'file.required' => 'Debe seleccionar un archivo.',
+            'file.mimes' => 'El archivo debe ser de tipo Excel (.xls, .xlsx) o CSV.',
+        ]);
+
+        $import = new ProgramaImport();
+
+        try {
+            Excel::import($import, $request->file('file'));
+            $failures = $import->logicFailures;
+
+            if (empty($failures)) {
+                Alert::success('¡Importación de Programas completada exitosamente!')->flash();
+                return redirect($this->crud->route);
+            }
+
+            Alert::warning('Importación finalizada con '.count($failures).' fila(s) no importada(s). Revise el detalle.')->flash();
+            return redirect($this->crud->route.'/import')->with('importFailures', $failures);
+        } catch (\Throwable $e) {
+            Log::error('Error fatal en importación de Programas: '.$e->getMessage());
+            Alert::error('Ocurrió un error en el servidor durante la importación.')->flash();
+            return back();
+        }
+    }
+
+    public function downloadTemplate()
+    {
+        return Excel::download(new ProgramaTemplateExport(), 'plantilla_programas.xlsx');
     }
     
 
