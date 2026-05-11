@@ -294,13 +294,20 @@ class AutorizacionCrudController extends CrudController
         CRUD::setValidation(AutorizacionRequest::class);
 
         $entry = $this->crud->getCurrentEntry();
-        $requestedPhase = request('fase') === 'adicion' ? 'adicion' : 'inicial';
+        // Preserve phase context across GET (open form) and POST (save form).
+        $requestedPhase = request()->input('fase', request('fase')) === 'adicion' ? 'adicion' : 'inicial';
         $canEditDespacho = backpack_user()->hasAnyRole(['diana', 'admin']);
         $canEditPlaneacion = backpack_user()->hasAnyRole(['bancos', 'diana', 'admin']);
         $canEditAdministrativa = backpack_user()->hasAnyRole(['administrativa', 'diana', 'admin']);
         $canEditEstadoAprobacion = backpack_user()->hasRole('bancos');
         $canViewEstadoAprobacion = backpack_user()->hasAnyRole(['bancos', 'diana', 'admin']);
         $canEditInitialBlock = $requestedPhase !== 'adicion';
+
+        CRUD::addField([
+            'name' => 'fase',
+            'type' => 'hidden',
+            'value' => $requestedPhase,
+        ]);
 
         CRUD::addField([
             'name' => 'datos_autorizacion_read_only',
