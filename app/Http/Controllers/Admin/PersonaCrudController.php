@@ -29,8 +29,9 @@ class PersonaCrudController extends CrudController
         CRUD::setModel(Persona::class);
         CRUD::setRoute(config('backpack.base.route_prefix') . '/persona');
         CRUD::setEntityNameStrings('persona', 'personas');
-         // 🔒 Solo el Admin (id 1) puede borrar
-         if (!backpack_user()->hasRole('admin')) {
+         // Permitir borrar a roles autorizados (admin y diana).
+         // Evita bloquear por hardcode cuando el rol diana tiene permiso funcional.
+         if (!backpack_user()->hasAnyRole(['admin', 'diana'])) {
             CRUD::denyAccess('delete');
         }
 
