@@ -358,6 +358,87 @@ class SeguimientoCrudController extends CrudController
                     'title'   => '{{ $entry->fuente->nombre ?? "" }}',
                 ],
             ],
+            // Campos solo para export DataTable (ocultos en listado)
+            [
+                'name' => 'fecha_acta_inicio',
+                'label' => 'Fecha Inicio Inicial',
+                'type' => 'date',
+                'format' => 'YYYY-MM-DD',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'fecha_finalizacion',
+                'label' => 'Fecha Fin Inicial',
+                'type' => 'date',
+                'format' => 'YYYY-MM-DD',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'tiempo_ejecucion_dias',
+                'label' => 'Dias Inicial',
+                'type' => 'number',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'valor_mensual',
+                'label' => 'Valor Mensual Inicial',
+                'type' => 'number',
+                'decimals' => 0,
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'valor_total',
+                'label' => 'Valor Total Inicial',
+                'type' => 'number',
+                'decimals' => 0,
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'adicion',
+                'label' => 'Tiene Adicion',
+                'type' => 'text',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'fecha_acta_inicio_adicion',
+                'label' => 'Fecha Inicio Adicion',
+                'type' => 'date',
+                'format' => 'YYYY-MM-DD',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'fecha_finalizacion_adicion',
+                'label' => 'Fecha Fin Adicion',
+                'type' => 'date',
+                'format' => 'YYYY-MM-DD',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'tiempo_ejecucion_dias_adicion',
+                'label' => 'Dias Adicion',
+                'type' => 'number',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'valor_adicion',
+                'label' => 'Valor Adicion',
+                'type' => 'number',
+                'decimals' => 0,
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'tiempo_total_ejecucion_dias',
+                'label' => 'Dias Totales',
+                'type' => 'number',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'valor_total_contrato',
+                'label' => 'Valor Total Contrato',
+                'type' => 'number',
+                'decimals' => 0,
+                'exportOnlyColumn' => true,
+            ],
          
         ]);
 
