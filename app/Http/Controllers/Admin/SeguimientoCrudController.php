@@ -145,6 +145,7 @@ class SeguimientoCrudController extends CrudController
                 'label' => 'Nombre',
                 'type' => 'relationship',
                 'attribute' => 'nombre_contratista',
+                'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('persona', function ($q) use ($searchTerm) {
                         $q->where('nombre_contratista', 'like', "%{$searchTerm}%");
@@ -183,6 +184,7 @@ class SeguimientoCrudController extends CrudController
                 'name' => 'numero_contrato',
                 'label' => 'Cto',
                 'type' => 'text',
+                'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhere('numero_contrato', 'like', "%{$searchTerm}%");
                 },
@@ -195,6 +197,7 @@ class SeguimientoCrudController extends CrudController
                 'name' => 'anio',
                 'label' => 'Año',
                 'type' => 'text',
+                'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhere('anio', 'like', "%{$searchTerm}%");
                 },
@@ -207,6 +210,7 @@ class SeguimientoCrudController extends CrudController
                 'name' => 'estado_dynamic',
                 'label' => 'Estado',
                 'type' => 'closure',
+                'visibleInExport' => false,
                 'function' => function($entry) {
                     return $entry->tipo === 'entrevista'
                         ? $entry->estado
@@ -227,6 +231,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'fecha_acta_inicio',
                 'label' => 'Inicio',
                 'type'  => 'date',
+                'visibleInExport' => false,
                 'format' => 'DD/MM/YYYY',
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhere('fecha_acta_inicio', 'like', "%{$searchTerm}%");
@@ -240,6 +245,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'fecha_finalizacion',
                 'label' => 'Finalización',
                 'type'  => 'date',
+                'visibleInExport' => false,
                 'format' => 'DD/MM/YYYY',
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhere('fecha_finalizacion', 'like', "%{$searchTerm}%");
@@ -253,6 +259,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'tiempo_total_ejecucion_dias',
                 'label' => 'Total Días',
                 'type'  => 'number',
+                'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhere('tiempo_total_ejecucion_dias', 'like', "%{$searchTerm}%");
                 },
@@ -267,6 +274,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'valor_total_contrato',
                 'label' => 'Valor Total',
                 'type'  => 'closure',
+                'visibleInExport' => false,
                 'function' => function($entry) {
                     return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');
                 },
@@ -283,6 +291,7 @@ class SeguimientoCrudController extends CrudController
                 'name' => 'persona.cedula_o_nit',
                 'label' => 'Cédula / NIT',
                 'type' => 'relationship',
+                'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('persona', function ($q) use ($searchTerm) {
                         $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
@@ -298,6 +307,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'persona.referencias',
                 'label' => 'Referencias',
                 'type'  => 'closure',
+                'visibleInExport' => false,
             
                 'function' => function ($entry) {
                     return $entry->persona->referencias
@@ -311,6 +321,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'secretaria',     // relación
                 'label' => 'Secretaría',
                 'type'  => 'relationship',
+                'visibleInExport' => false,
             
                 'attribute' => 'nombre',     // 👈 CAMPO REAL EN secretarias
             
@@ -330,6 +341,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'gerencia',
                 'label' => 'Gerencia',
                 'type'  => 'relationship',
+                'visibleInExport' => false,
                 'attribute' => 'nombre',
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('gerencia', function ($q) use ($searchTerm) {
@@ -346,6 +358,7 @@ class SeguimientoCrudController extends CrudController
                 'name'  => 'fuente',
                 'label' => 'Fuente de Financiación',
                 'type'  => 'relationship',
+                'visibleInExport' => false,
                 'attribute' => 'nombre',
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('fuente', function ($q) use ($searchTerm) {
@@ -360,15 +373,59 @@ class SeguimientoCrudController extends CrudController
             ],
             // Campos solo para export DataTable (ocultos en listado)
             [
+                'name' => 'referencias_export',
+                'label' => 'Referencias',
+                'type' => 'closure',
+                'function' => function ($entry) {
+                    return $entry->persona?->referencias?->pluck('nombre')->implode(', ') ?? '';
+                },
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'cedula_export',
+                'label' => 'Cédula / NIT',
+                'type' => 'closure',
+                'function' => fn($entry) => $entry->persona->cedula_o_nit ?? '',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'nombre_export',
+                'label' => 'Nombre',
+                'type' => 'closure',
+                'function' => fn($entry) => $entry->persona->nombre_contratista ?? '',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'numero_contrato',
+                'label' => 'Cto',
+                'type' => 'text',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'anio',
+                'label' => 'Año',
+                'type' => 'text',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'estado_export',
+                'label' => 'Estado',
+                'type' => 'closure',
+                'function' => fn($entry) => $entry->tipo === 'entrevista'
+                    ? ($entry->estado ?? '')
+                    : (optional($entry->estadoContrato)->nombre ?? ''),
+                'exportOnlyColumn' => true,
+            ],
+            [
                 'name' => 'fecha_acta_inicio',
-                'label' => 'Fecha Inicio Inicial',
+                'label' => 'Inicio',
                 'type' => 'date',
                 'format' => 'YYYY-MM-DD',
                 'exportOnlyColumn' => true,
             ],
             [
                 'name' => 'fecha_finalizacion',
-                'label' => 'Fecha Fin Inicial',
+                'label' => 'Finalización',
                 'type' => 'date',
                 'format' => 'YYYY-MM-DD',
                 'exportOnlyColumn' => true,
@@ -428,15 +485,36 @@ class SeguimientoCrudController extends CrudController
             ],
             [
                 'name' => 'tiempo_total_ejecucion_dias',
-                'label' => 'Dias Totales',
+                'label' => 'Total Días',
                 'type' => 'number',
                 'exportOnlyColumn' => true,
             ],
             [
                 'name' => 'valor_total_contrato',
-                'label' => 'Valor Total Contrato',
+                'label' => 'Valor Total',
                 'type' => 'number',
                 'decimals' => 0,
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name'  => 'secretaria_export',
+                'label' => 'Secretaría',
+                'type'  => 'closure',
+                'function' => fn($entry) => $entry->secretaria->nombre ?? '',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name'  => 'gerencia_export',
+                'label' => 'Gerencia',
+                'type'  => 'closure',
+                'function' => fn($entry) => $entry->gerencia->nombre ?? '',
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name'  => 'fuente_export',
+                'label' => 'Fuente de Financiación',
+                'type'  => 'closure',
+                'function' => fn($entry) => $entry->fuente->nombre ?? '',
                 'exportOnlyColumn' => true,
             ],
          
