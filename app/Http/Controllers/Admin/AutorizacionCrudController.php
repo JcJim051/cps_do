@@ -196,6 +196,7 @@ class AutorizacionCrudController extends CrudController
             'type' => 'view',
             'view' => 'vendor.backpack.crud.columns.autorizacion_toggle',
             'escaped' => false,
+            'visibleInExport' => false,
         ]);
 
         CRUD::addColumn([
@@ -204,6 +205,7 @@ class AutorizacionCrudController extends CrudController
             'type' => 'view',
             'view' => 'vendor.backpack.crud.columns.autorizacion_toggle',
             'escaped' => false,
+            'visibleInExport' => false,
         ]);
 
         CRUD::addColumn([
@@ -212,6 +214,73 @@ class AutorizacionCrudController extends CrudController
             'type' => 'view',
             'view' => 'vendor.backpack.crud.columns.autorizacion_toggle',
             'escaped' => false,
+            'visibleInExport' => false,
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'aut_despacho_export',
+            'label' => 'Aut 1',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $field = ($entry->fase_listado ?? 'inicial') === 'adicion' ? 'aut_despacho_adicion' : 'aut_despacho';
+                return !empty($entry->{$field}) ? 'Autorizado' : 'No autorizado';
+            },
+            'exportOnlyColumn' => true,
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'fecha_aut_despacho_export',
+            'label' => 'Fecha Aut 1',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $field = ($entry->fase_listado ?? 'inicial') === 'adicion' ? 'fecha_aut_despacho_adicion' : 'fecha_aut_despacho';
+                return $entry->{$field}?->format('d/m/Y') ?? '';
+            },
+            'exportOnlyColumn' => true,
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'aut_planeacion_export',
+            'label' => 'Aut 2',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $field = ($entry->fase_listado ?? 'inicial') === 'adicion' ? 'aut_planeacion_adicion' : 'aut_planeacion';
+                return !empty($entry->{$field}) ? 'Autorizado' : 'No autorizado';
+            },
+            'exportOnlyColumn' => true,
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'fecha_aut_planeacion_export',
+            'label' => 'Fecha Aut 2',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $field = ($entry->fase_listado ?? 'inicial') === 'adicion' ? 'fecha_aut_planeacion_adicion' : 'fecha_aut_planeacion';
+                return $entry->{$field}?->format('d/m/Y') ?? '';
+            },
+            'exportOnlyColumn' => true,
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'aut_administrativa_export',
+            'label' => 'Aut 3',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $field = ($entry->fase_listado ?? 'inicial') === 'adicion' ? 'aut_administrativa_adicion' : 'aut_administrativa';
+                return !empty($entry->{$field}) ? 'Autorizado' : 'No autorizado';
+            },
+            'exportOnlyColumn' => true,
+        ]);
+
+        CRUD::addColumn([
+            'name' => 'fecha_aut_administrativa_export',
+            'label' => 'Fecha Aut 3',
+            'type' => 'closure',
+            'function' => function ($entry) {
+                $field = ($entry->fase_listado ?? 'inicial') === 'adicion' ? 'fecha_aut_administrativa_adicion' : 'fecha_aut_administrativa';
+                return $entry->{$field}?->format('d/m/Y') ?? '';
+            },
+            'exportOnlyColumn' => true,
         ]);
 
         CRUD::addColumn([
