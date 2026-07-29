@@ -20,7 +20,7 @@ use App\Exports\SeguimientoExport;
 class SeguimientoCrudController extends CrudController
 {
     use \Backpack\CRUD\app\Http\Controllers\Operations\ListOperation;
-    use \Backpack\CRUD\app\Http\Controllers\Operations\CreateOperation;
+    use \Backpack\CRUD\app\Http\Controllers\Operations\CreateOperation { store as traitStore; }
     use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation { update as traitUpdate; }
     use \Backpack\CRUD\app\Http\Controllers\Operations\DeleteOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
@@ -906,22 +906,34 @@ class SeguimientoCrudController extends CrudController
         $this->setupCreateOperation();
     }
 
-    public function update(Request $request)
+    protected function applyAuthorizationDates(Request $request): void
     {
-        // Autocompletar fechas si el switch está encendido y la fecha viene vacía
-        if ($request->input('tipo') === 'contrato') {
-            foreach (['despacho','planeacion','administrativa'] as $suf) {
-                $auto  = "aut_$suf";
-                $fecha = "fecha_aut_$suf";
-    
-                // Para fields tipo "switch", boolean() reconoce "1"/"0" correctamente
-                if ($request->boolean($auto) && !$request->filled($fecha)) {
-                    $request->merge([$fecha => Carbon::now('America/Bogota')->format('Y-m-d')]);
-                }
+        if ($request->input('tipo') !== 'contrato') {
+            return;
+        }
+
+        foreach (['despacho', 'planeacion', 'administrativa'] as $suffix) {
+            $auto = "aut_$suffix";
+            $fecha = "fecha_aut_$suffix";
+
+            if ($request->boolean($auto) && !$request->filled($fecha)) {
+                $request->merge([$fecha => Carbon::now('America/Bogota')->format('Y-m-d')]);
             }
         }
-    
-        // Llama al método original del trait
+    }
+
+    public function store()
+    {
+        $request = $this->crud->getRequest() ?? request();
+        $this->applyAuthorizationDates($request);
+
+        return $this->traitStore();
+    }
+
+    public function update(Request $request)
+    {
+        $this->applyAuthorizationDates($request);
+
         return $this->traitUpdate();
     }
     

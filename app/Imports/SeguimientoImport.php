@@ -4,6 +4,7 @@ namespace App\Imports;
 
 use App\Models\Seguimiento;
 use App\Models\Persona;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\ToCollection;
@@ -94,6 +95,8 @@ class SeguimientoImport implements
                     if (empty($row['anio'])) {
                         throw new \Exception("El año es obligatorio para crear un seguimiento");
                     }
+
+                    $this->applyAuthorizationDatesForCreate($editableData);
 
                     $seguimiento = new Seguimiento(array_merge($editableData, [
                         'persona_id' => $persona->id,
@@ -203,6 +206,29 @@ class SeguimientoImport implements
         return is_string($value) && strtotime($value)
             ? date('Y-m-d', strtotime($value))
             : null;
+    }
+
+    private function applyAuthorizationDatesForCreate(array &$data): void
+    {
+        if (($data['tipo'] ?? 'contrato') !== 'contrato') {
+            return;
+        }
+
+        $today = Carbon::now('America/Bogota')->format('Y-m-d');
+        $authorizationDateMap = [
+            'aut_despacho' => 'fecha_aut_despacho',
+            'aut_planeacion' => 'fecha_aut_planeacion',
+            'aut_administrativa' => 'fecha_aut_administrativa',
+            'aut_despacho_adicion' => 'fecha_aut_despacho_adicion',
+            'aut_planeacion_adicion' => 'fecha_aut_planeacion_adicion',
+            'aut_administrativa_adicion' => 'fecha_aut_administrativa_adicion',
+        ];
+
+        foreach ($authorizationDateMap as $authorizationField => $dateField) {
+            if (!empty($data[$authorizationField]) && empty($data[$dateField])) {
+                $data[$dateField] = $today;
+            }
+        }
     }
 
     private function cleanBool($value)
