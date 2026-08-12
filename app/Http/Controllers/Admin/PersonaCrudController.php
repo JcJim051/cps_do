@@ -11,10 +11,10 @@ use App\Models\EjercicioPolitico;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use App\Exports\PeopleTemplateExport;
+use App\Services\DatosAbiertosSecopService;
 use Illuminate\Http\Request;
 use App\Imports\PeopleImport;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 class PersonaCrudController extends CrudController
 {
@@ -23,6 +23,11 @@ class PersonaCrudController extends CrudController
     use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation { update as traitUpdate; edit as traitEdit; }
     use \Backpack\CRUD\app\Http\Controllers\Operations\DeleteOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
+
+    public function __construct(private DatosAbiertosSecopService $datosAbiertosSecopService)
+    {
+        parent::__construct();
+    }
 
     public function setup(): void
     {
@@ -980,32 +985,8 @@ class PersonaCrudController extends CrudController
                     $cacheKey = 'datos_abiertos_contratos_' . $cedula;
                     try {
                         $result = Cache::remember($cacheKey, 600, function () use ($cedula) {
-                        $baseUrl = 'https://www.datos.gov.co/resource/jbjy-vk9h.json';
-                        $select = implode(', ', [
-                            'nombre_entidad',
-                            'estado_contrato',
-                            'tipo_de_contrato',
-                            'fecha_de_firma',
-                            'fecha_de_inicio_del_contrato',
-                            'fecha_de_fin_del_contrato',
-                            'valor_del_contrato',
-                            'urlproceso',
-                        ]);
-                        $where = "documento_proveedor = '{$cedula}' AND fecha_de_firma >= '2024-01-01T00:00:00.000'";
-
-                        $response = Http::timeout(10)->get($baseUrl, [
-                            '$select' => $select,
-                            '$where' => $where,
-                            '$order' => 'fecha_de_firma DESC',
-                            '$limit' => 1000,
-                        ]);
-
-                        if (!$response->ok()) {
-                            throw new \Exception('HTTP ' . $response->status());
-                        }
-
-                        return $response->json();
-                    });
+                            return $this->datosAbiertosSecopService->consultarPorDocumento($cedula, '2024-01-01');
+                        });
                     } catch (\Throwable $e) {
                         return '<p class="text-muted">No se pudo consultar Datos Abiertos.</p>';
                     }
@@ -1033,6 +1014,10 @@ class PersonaCrudController extends CrudController
                     $html .= '</div>';
                     $html .= '<div id="'.$collapseId.'" class="collapse">';
                     $html .= '<div class="card-body p-0">';
+                    $html .= '<div class="px-3 py-2 border-bottom bg-light d-flex flex-wrap gap-3 small text-muted">'
+                        . '<span><span style="display:inline-block;width:12px;height:12px;border-left:3px solid #0d6efd;background:#fff;margin-right:6px;vertical-align:-1px;"></span>SECOP I</span>'
+                        . '<span><span style="display:inline-block;width:12px;height:12px;border-left:3px solid transparent;background:#fff;margin-right:6px;vertical-align:-1px;"></span>SECOP II</span>'
+                        . '</div>';
                     $html .= '<div class="table-responsive"><table class="table mb-0 table-striped align-middle">';
                     $html .= '<thead class="table-light"><tr>'
                         . '<th>Entidad</th>'
@@ -1046,44 +1031,24 @@ class PersonaCrudController extends CrudController
                         . '</tr></thead><tbody>';
 
                     foreach ($result as $row) {
-                        $url = $row['urlproceso'] ?? '';
-                        if (is_array($url)) {
-                            $url = $url['url'] ?? json_encode($url, JSON_UNESCAPED_UNICODE);
-                        } elseif (is_string($url) && str_starts_with($url, '{') && str_contains($url, '"url"')) {
-                            $decoded = json_decode($url, true);
-                            if (is_array($decoded) && !empty($decoded['url'])) {
-                                $url = $decoded['url'];
-                            }
-                        }
-                        $url = is_string($url) ? trim($url) : '';
-                        if ($url && !str_starts_with($url, 'http')) {
-                            $url = 'https://' . ltrim($url, '/');
-                        }
+                        $url = $row['url'] ?? '';
                         $urlHtml = $url ? '<a href="'.e($url).'" target="_blank">Ver</a>' : '-';
-                        $valor = $row['valor_del_contrato'] ?? null;
+                        $valor = $row['valor_total_con_adiciones'] ?? $row['valor_contrato'] ?? null;
                         if (is_numeric($valor)) {
                             $valor = '$ ' . number_format((float) $valor, 0, ',', '.');
                         }
-                        $fechaFirma = $row['fecha_de_firma'] ?? null;
-                        $fechaInicio = $row['fecha_de_inicio_del_contrato'] ?? null;
-                        $fechaFin = $row['fecha_de_fin_del_contrato'] ?? null;
-                        try {
-                            if ($fechaFirma) $fechaFirma = \Carbon\Carbon::parse($fechaFirma)->format('Y-m-d');
-                        } catch (\Throwable $e) {}
-                        try {
-                            if ($fechaInicio) $fechaInicio = \Carbon\Carbon::parse($fechaInicio)->format('Y-m-d');
-                        } catch (\Throwable $e) {}
-                        try {
-                            if ($fechaFin) $fechaFin = \Carbon\Carbon::parse($fechaFin)->format('Y-m-d');
-                        } catch (\Throwable $e) {}
+                        $fechaFirma = $row['fecha_firma'] ?? null;
+                        $fechaInicio = $row['fecha_inicio'] ?? null;
+                        $fechaFin = $row['fecha_fin'] ?? null;
                         $nombreEntidad = $row['nombre_entidad'] ?? null;
                         $esMeta = is_string($nombreEntidad)
                             && mb_strtoupper(trim($nombreEntidad)) === 'DEPARTAMENTO DEL META';
-                        $rowClass = $esMeta ? '' : 'table-warning';
+                        $sourceClass = ($row['fuente_codigo'] ?? '') === 'secop1' ? 'secop1-row' : '';
+                        $rowClass = trim(($esMeta ? '' : 'table-warning').' '.$sourceClass);
                         $html .= '<tr class="'.$rowClass.'">';
                         $html .= '<td>'.$safe($nombreEntidad).'</td>';
-                        $html .= '<td>'.$safe($row['estado_contrato'] ?? null).'</td>';
-                        $html .= '<td>'.$safe($row['tipo_de_contrato'] ?? null).'</td>';
+                        $html .= '<td>'.$safe($row['estado'] ?? null).'</td>';
+                        $html .= '<td>'.$safe($row['tipo'] ?? null).'</td>';
                         $html .= '<td>'.$safe($fechaFirma).'</td>';
                         $html .= '<td>'.$safe($fechaInicio).'</td>';
                         $html .= '<td>'.$safe($fechaFin).'</td>';
@@ -1093,6 +1058,9 @@ class PersonaCrudController extends CrudController
                     }
 
                     $html .= '</tbody></table></div></div></div></div>';
+                    $html .= '<style>
+                        .secop1-row td:first-child{border-left:3px solid #0d6efd;}
+                    </style>';
                     $html .= '</div>';
                     return $html;
                 },
