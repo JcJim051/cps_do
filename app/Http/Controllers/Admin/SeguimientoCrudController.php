@@ -1099,6 +1099,46 @@ class SeguimientoCrudController extends CrudController
                         $html .= self::renderCard($label, $valor, 3); // col-md-3 = 4 columnas
                     }
                     $html .= "</div></div>";
+
+                    $link = $entry->vinculoSecop;
+                    if ($link && (!$link->ultima_consulta_at || $link->ultima_consulta_at->lt(now()->subMinutes(10)))) {
+                        try {
+                            app(\App\Services\SecopVinculacionService::class)->refrescar($link);
+                            $link->refresh();
+                        } catch (\Throwable $e) {
+                            Log::warning('No se pudo refrescar SECOP al abrir seguimiento '.$entry->id.': '.$e->getMessage());
+                        }
+                    }
+                    $snapshot = $link?->ultimaInstantanea;
+                    $html .= "<div class='col-12'><div class='d-flex justify-content-between align-items-center mt-4'><h5 class='text-info mb-0'>Datos observados en SECOP</h5><div>";
+                    if ($link) {
+                        $html .= '<form class="d-inline" method="POST" action="'.e(route('seguimiento.secop.refresh', $entry)).'">'
+                            .csrf_field().'<button class="btn btn-sm btn-outline-primary">Refrescar</button></form> ';
+                        $html .= '<form class="d-inline" method="POST" action="'.e(route('seguimiento.secop.unlink', $entry)).'">'
+                            .csrf_field().method_field('DELETE').'<button class="btn btn-sm btn-outline-danger" onclick="return confirm(\'¿Desvincular SECOP?\')">Desvincular</button></form>';
+                    } else {
+                        $html .= '<a class="btn btn-sm btn-primary" href="'.e(route('seguimiento.secop.candidates', $entry)).'">Buscar y vincular</a>';
+                    }
+                    $html .= '</div></div><div class="row mt-2">';
+                    if ($snapshot) {
+                        $secopData = [
+                            'Fuente / identificador' => e($link->fuente_secop.' · '.$link->identificador_externo),
+                            'Estado / fase' => e($snapshot->estado ?: $snapshot->fase ?: '-'),
+                            'Inicio SECOP' => $snapshot->fecha_inicio?->format('d/m/Y'),
+                            'Fin SECOP' => $snapshot->fecha_fin?->format('d/m/Y'),
+                            'Valor SECOP' => $snapshot->valor_total !== null ? '$ '.number_format($snapshot->valor_total, 0, ',', '.') : null,
+                            'Diferencia de valor' => $snapshot->valor_total !== null && $entry->valor_total_contrato !== null
+                                ? '$ '.number_format($snapshot->valor_total - $entry->valor_total_contrato, 0, ',', '.') : null,
+                            'Última consulta' => $snapshot->consultado_at?->format('d/m/Y H:i'),
+                            'Proceso' => $snapshot->url ? '<a target="_blank" href="'.e($snapshot->url).'">Abrir en SECOP</a>' : null,
+                        ];
+                        foreach ($secopData as $label => $valor) {
+                            $html .= self::renderCard($label, $valor, 3);
+                        }
+                    } else {
+                        $html .= '<div class="col-12"><div class="alert alert-light border">Sin vínculo SECOP confirmado. Los valores anteriores permanecen como planeación.</div></div>';
+                    }
+                    $html .= '</div></div>';
                 }
     
                 // 🔹 Entrevista (mantener en 4 columnas)

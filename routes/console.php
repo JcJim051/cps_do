@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('secop:refresh-links')->dailyAt('02:30')->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

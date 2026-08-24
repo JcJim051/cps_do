@@ -37,6 +37,38 @@ Route::group([
         Route::crud('ejercicio-politico', 'EjercicioPoliticoCrudController');
         Route::get('consulta-datos-abiertos', 'ConsultaDatosAbiertosController@index')->name('consulta-datos-abiertos.index');
 
+        Route::get('prevalidacion-contractual', 'PrevalidacionContractualController@index')->name('prevalidacion.index');
+        Route::get('prevalidacion-contractual/{prevalidacion}', 'PrevalidacionContractualController@show')->whereNumber('prevalidacion')->name('prevalidacion.show');
+        Route::get('prevalidacion-contractual/{prevalidacion}/editar', 'PrevalidacionContractualController@edit')->whereNumber('prevalidacion')->name('prevalidacion.edit');
+        Route::put('prevalidacion-contractual/{prevalidacion}', 'PrevalidacionContractualController@update')->whereNumber('prevalidacion')->name('prevalidacion.update');
+        Route::post('prevalidacion-contractual/estado-masivo', 'PrevalidacionContractualController@bulkState')->name('prevalidacion.bulk-state');
+        Route::post('prevalidacion-contractual/{prevalidacion}/aceptar-drive', 'PrevalidacionContractualController@acceptDrive')->whereNumber('prevalidacion')->name('prevalidacion.accept-drive');
+        Route::post('prevalidacion-contractual/promover', 'PrevalidacionContractualController@promote')->name('prevalidacion.promote');
+        Route::post('prevalidacion-contractual/reintentar-drive', 'PrevalidacionContractualController@retryDrive')->name('prevalidacion.retry-drive');
+        Route::get('prevalidacion-contractual/{prevalidacion}/candidatos-secop', 'PrevalidacionContractualController@candidates')->whereNumber('prevalidacion')->name('prevalidacion.candidates');
+        Route::post('prevalidacion-contractual/{prevalidacion}/vincular-secop', 'PrevalidacionContractualController@link')->whereNumber('prevalidacion')->name('prevalidacion.link');
+        Route::delete('prevalidacion-contractual/{prevalidacion}/vinculo-secop', 'PrevalidacionContractualController@unlink')->whereNumber('prevalidacion')->name('prevalidacion.unlink');
+        Route::post('prevalidacion-contractual/{prevalidacion}/refrescar-secop', 'PrevalidacionContractualController@refresh')->whereNumber('prevalidacion')->name('prevalidacion.refresh');
+
+        Route::get('prevalidacion-fuentes', 'PrevalidacionFuenteController@index')->name('prevalidacion.sources.index');
+        Route::get('prevalidacion-fuentes/crear', 'PrevalidacionFuenteController@create')->name('prevalidacion.sources.create');
+        Route::post('prevalidacion-fuentes', 'PrevalidacionFuenteController@store')->name('prevalidacion.sources.store');
+        Route::get('prevalidacion-fuentes/{fuente}/editar', 'PrevalidacionFuenteController@edit')->whereNumber('fuente')->name('prevalidacion.sources.edit');
+        Route::put('prevalidacion-fuentes/{fuente}', 'PrevalidacionFuenteController@update')->whereNumber('fuente')->name('prevalidacion.sources.update');
+        Route::post('prevalidacion-fuentes/{fuente}/sincronizar', 'PrevalidacionFuenteController@sync')->whereNumber('fuente')->name('prevalidacion.sources.sync');
+        Route::post('prevalidacion-fuentes/sincronizar-todas', 'PrevalidacionFuenteController@syncAll')->name('prevalidacion.sources.sync-all');
+        Route::post('prevalidacion-fuentes/importar', 'PrevalidacionFuenteController@import')->name('prevalidacion.sources.import');
+        Route::get('prevalidacion-fuentes/plantilla', 'PrevalidacionFuenteController@template')->name('prevalidacion.sources.template');
+        Route::get('prevalidacion-google/conectar', 'GooglePrevalidacionController@redirect')->name('prevalidacion.google.redirect');
+        Route::get('prevalidacion-google/configuracion', 'GooglePrevalidacionController@configuration')->name('prevalidacion.google.configuration');
+        Route::put('prevalidacion-google/configuracion', 'GooglePrevalidacionController@saveCredentials')->name('prevalidacion.google.credentials');
+        Route::get('prevalidacion-google/callback', 'GooglePrevalidacionController@callback')->name('prevalidacion.google.callback');
+        Route::delete('prevalidacion-google/desconectar', 'GooglePrevalidacionController@disconnect')->name('prevalidacion.google.disconnect');
+        Route::get('seguimiento/{seguimiento}/candidatos-secop', 'SeguimientoSecopController@candidates')->whereNumber('seguimiento')->name('seguimiento.secop.candidates');
+        Route::post('seguimiento/{seguimiento}/vincular-secop', 'SeguimientoSecopController@link')->whereNumber('seguimiento')->name('seguimiento.secop.link');
+        Route::delete('seguimiento/{seguimiento}/vinculo-secop', 'SeguimientoSecopController@unlink')->whereNumber('seguimiento')->name('seguimiento.secop.unlink');
+        Route::post('seguimiento/{seguimiento}/refrescar-secop', 'SeguimientoSecopController@refresh')->whereNumber('seguimiento')->name('seguimiento.secop.refresh');
+
     });
 
 

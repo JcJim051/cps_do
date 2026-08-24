@@ -85,6 +85,18 @@
         protected static function booted()
         {
             static::saving(function ($seguimiento) {
+                if ($seguimiento->tipo === 'contrato' && $seguimiento->estado_contrato_id) {
+                    $estado = Estados::query()->find($seguimiento->estado_contrato_id)?->nombre;
+                    $estado = mb_strtoupper(trim((string) $estado));
+
+                    if ($estado === 'APROBADO') {
+                        $seguimiento->aut_despacho = true;
+                        $seguimiento->fecha_aut_despacho ??= Carbon::now('America/Bogota')->toDateString();
+                    } elseif (in_array($estado, ['PENDIENTE', 'PENDIENTE APROBACIÓN', 'CAMBIO'], true)) {
+                        $seguimiento->aut_despacho = false;
+                        $seguimiento->fecha_aut_despacho = null;
+                    }
+                }
     
                 // 🚫 Excel manda → no tocar nada
                 if ($seguimiento->skipAutoCalculation) {
@@ -182,6 +194,16 @@
         public function estadoContrato()
         {
             return $this->belongsTo(Estados::class, 'estado_contrato_id');
+        }
+
+        public function vinculoSecop()
+        {
+            return $this->hasOne(SecopVinculo::class, 'seguimiento_id');
+        }
+
+        public function prevalidacionOrigen()
+        {
+            return $this->hasOne(PrevalidacionContractual::class, 'seguimiento_id');
         }
         
     }

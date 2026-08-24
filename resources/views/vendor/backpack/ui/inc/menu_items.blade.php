@@ -44,6 +44,11 @@
 <x-backpack::menu-item title="Personas" icon="la la-user-tag" :link="backpack_url('persona')" />
 <x-backpack::menu-item title="Seguimientos Cto" icon="la la-user-edit" :link="backpack_url('seguimiento')" />
 <x-backpack::menu-item title="Seguimientos Nom" icon="la la-id-card" :link="backpack_url('seguimiento-nom')" />
+<x-backpack::menu-dropdown title="Prevalidación contractual" icon="la la-clipboard-check">
+    <x-backpack::menu-dropdown-item title="Bandeja" icon="la la-list" :link="backpack_url('prevalidacion-contractual')" />
+    <x-backpack::menu-dropdown-item title="Fuentes y cuadros" icon="la la-table" :link="backpack_url('prevalidacion-fuentes')" />
+    <x-backpack::menu-dropdown-item title="Configurar Google Drive" icon="la la-google" :link="backpack_url('prevalidacion-google/configuracion')" />
+</x-backpack::menu-dropdown>
 <x-backpack::menu-item title="Consulta Datos Abiertos" icon="la la-search" :link="backpack_url('consulta-datos-abiertos')" />
 @endif
 

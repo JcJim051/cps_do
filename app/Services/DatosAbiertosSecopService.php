@@ -21,14 +21,48 @@ class DatosAbiertosSecopService
             ->all();
     }
 
-    protected function consultarSecop2(string $documento, ?string $desde, int $limit): array
+    public function consultarCandidatos(string $documento, ?string $nitEntidad = null, int $limit = 200): array
+    {
+        $contratos = array_merge(
+            $this->consultarSecop2($documento, null, $limit, $nitEntidad),
+            $this->consultarSecop1($documento, null, $limit, $nitEntidad)
+        );
+
+        $procesos = [];
+        try {
+            $procesos = $this->consultarProcesosSecop2($documento, $nitEntidad, min($limit, 100));
+        } catch (\Throwable) {
+            // Los contratos siguen siendo útiles aunque falle el conjunto de proponentes/procesos.
+        }
+
+        $contractProcessIds = collect($contratos)->pluck('proceso_de_compra')->filter()->all();
+        $procesos = collect($procesos)
+            ->reject(fn (array $row) => in_array($row['id_proceso'] ?? null, $contractProcessIds, true))
+            ->all();
+
+        return collect(array_merge($contratos, $procesos))
+            ->sortByDesc(fn (array $row) => $row['fecha_firma_sort'] ?? $row['fecha_publicacion_sort'] ?? '')
+            ->values()->all();
+    }
+
+    public function buscarCandidato(string $documento, ?string $nitEntidad, string $fuente, string $identificador): ?array
+    {
+        return collect($this->consultarCandidatos($documento, $nitEntidad))
+            ->first(fn (array $row) => ($row['fuente_codigo'] ?? '') === $fuente
+                && (string) ($row['identificador_externo'] ?? '') === $identificador);
+    }
+
+    protected function consultarSecop2(string $documento, ?string $desde, int $limit, ?string $nitEntidad = null): array
     {
         $baseUrl = 'https://www.datos.gov.co/resource/jbjy-vk9h.json';
         $select = implode(', ', [
             'nombre_entidad',
+            'nit_entidad',
             'departamento',
             'ciudad',
             'proceso_de_compra',
+            'id_contrato',
+            'referencia_del_contrato',
             'estado_contrato',
             'tipo_de_contrato',
             'modalidad_de_contratacion',
@@ -45,6 +79,9 @@ class DatosAbiertosSecopService
         $where = "documento_proveedor = '{$documento}'";
         if ($desde !== null && $desde !== '') {
             $where .= " AND fecha_de_firma >= '{$desde}T00:00:00.000'";
+        }
+        if ($nitEntidad) {
+            $where .= " AND nit_entidad = ".$this->digits($nitEntidad);
         }
 
         $response = Http::timeout(12)->get($baseUrl, [
@@ -63,9 +100,15 @@ class DatosAbiertosSecopService
                 'fuente' => 'SECOP II',
                 'fuente_codigo' => 'secop2',
                 'nombre_entidad' => $row['nombre_entidad'] ?? null,
+                'nit_entidad' => $row['nit_entidad'] ?? null,
                 'departamento' => $row['departamento'] ?? null,
                 'ciudad' => $row['ciudad'] ?? null,
                 'proceso_de_compra' => $row['proceso_de_compra'] ?? null,
+                'id_proceso' => $row['proceso_de_compra'] ?? null,
+                'id_contrato' => $row['id_contrato'] ?? null,
+                'referencia_contrato' => $row['referencia_del_contrato'] ?? null,
+                'identificador_externo' => $row['id_contrato'] ?? $row['referencia_del_contrato'] ?? $row['proceso_de_compra'] ?? null,
+                'tipo_registro' => 'contrato',
                 'estado' => $row['estado_contrato'] ?? null,
                 'tipo' => $row['tipo_de_contrato'] ?? null,
                 'modalidad' => $row['modalidad_de_contratacion'] ?? null,
@@ -84,11 +127,13 @@ class DatosAbiertosSecopService
         })->all();
     }
 
-    protected function consultarSecop1(string $documento, ?string $desde, int $limit): array
+    protected function consultarSecop1(string $documento, ?string $desde, int $limit, ?string $nitEntidad = null): array
     {
         $baseUrl = 'https://www.datos.gov.co/resource/f789-7hwg.json';
         $select = implode(', ', [
             'nombre_entidad',
+            'nit_de_la_entidad',
+            'c_digo_de_la_entidad',
             'departamento_entidad',
             'municipio_entidad',
             'numero_de_proceso',
@@ -111,6 +156,9 @@ class DatosAbiertosSecopService
         if ($desde !== null && $desde !== '') {
             $where .= " AND fecha_de_firma_del_contrato >= '{$desde}T00:00:00.000'";
         }
+        if ($nitEntidad) {
+            $where .= " AND nit_de_la_entidad = '".$this->digits($nitEntidad)."'";
+        }
 
         $response = Http::timeout(12)->get($baseUrl, [
             '$select' => $select,
@@ -128,9 +176,18 @@ class DatosAbiertosSecopService
                 'fuente' => 'SECOP I',
                 'fuente_codigo' => 'secop1',
                 'nombre_entidad' => $row['nombre_entidad'] ?? null,
+                'nit_entidad' => $row['nit_de_la_entidad'] ?? null,
                 'departamento' => $row['departamento_entidad'] ?? null,
                 'ciudad' => $row['municipio_entidad'] ?? null,
                 'proceso_de_compra' => $row['numero_de_proceso'] ?? null,
+                'id_proceso' => $row['numero_de_proceso'] ?? null,
+                'id_contrato' => null,
+                'referencia_contrato' => $row['numero_de_proceso'] ?? null,
+                'identificador_externo' => implode('|', array_filter([
+                    $row['c_digo_de_la_entidad'] ?? $row['nit_de_la_entidad'] ?? null,
+                    $row['numero_de_proceso'] ?? null,
+                ])),
+                'tipo_registro' => 'contrato',
                 'estado' => $row['estado_del_proceso'] ?? null,
                 'tipo' => $row['tipo_de_contrato'] ?? null,
                 'modalidad' => $row['modalidad_de_contratacion'] ?? null,
@@ -145,6 +202,67 @@ class DatosAbiertosSecopService
                 'documento' => $row['identificacion_del_contratista'] ?? null,
                 'objeto' => $row['objeto_del_contrato_a_la'] ?? null,
                 'url' => $this->normalizeUrl($row['ruta_proceso_en_secop_i'] ?? ''),
+            ];
+        })->all();
+    }
+
+    protected function consultarProcesosSecop2(string $documento, ?string $nitEntidad, int $limit): array
+    {
+        $where = "nit_proveedor = '".$this->digits($documento)."'";
+        if ($nitEntidad) {
+            $where .= " AND nit_entidad = '".$this->digits($nitEntidad)."'";
+        }
+
+        $proponentes = Http::timeout(15)->get('https://www.datos.gov.co/resource/hgi6-6wh3.json', [
+            '$select' => 'id_procedimiento,fecha_publicaci_n,nombre_procedimiento,nit_entidad,entidad_compradora,nit_proveedor',
+            '$where' => $where,
+            '$order' => 'fecha_publicaci_n DESC',
+            '$limit' => $limit,
+        ])->throw()->json();
+
+        $ids = collect($proponentes)->pluck('id_procedimiento')->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $quoted = $ids->map(fn ($id) => "'".str_replace("'", "''", $id)."'")->implode(',');
+        $rows = Http::timeout(18)->get('https://www.datos.gov.co/resource/p6dx-8zbt.json', [
+            '$select' => implode(',', [
+                'entidad', 'nit_entidad', 'id_del_proceso', 'referencia_del_proceso', 'nombre_del_procedimiento',
+                'descripci_n_del_procedimiento', 'fase', 'estado_del_procedimiento', 'estado_resumen',
+                'fecha_de_publicacion_del', 'fecha_de_ultima_publicaci', 'precio_base', 'duracion',
+                'unidad_de_duracion', 'tipo_de_contrato', 'urlproceso',
+            ]),
+            '$where' => "id_del_proceso in({$quoted})",
+            '$limit' => $ids->count(),
+        ])->throw()->json();
+
+        return collect($rows)->map(function (array $row) use ($documento) {
+            return [
+                'fuente' => 'SECOP II',
+                'fuente_codigo' => 'secop2_proceso',
+                'tipo_registro' => 'proceso',
+                'identificador_externo' => $row['id_del_proceso'] ?? null,
+                'id_proceso' => $row['id_del_proceso'] ?? null,
+                'referencia_proceso' => $row['referencia_del_proceso'] ?? null,
+                'proceso_de_compra' => $row['id_del_proceso'] ?? null,
+                'nombre_entidad' => $row['entidad'] ?? null,
+                'nit_entidad' => $row['nit_entidad'] ?? null,
+                'estado' => $row['estado_del_procedimiento'] ?? $row['estado_resumen'] ?? null,
+                'fase' => $row['fase'] ?? $row['estado_resumen'] ?? null,
+                'tipo' => $row['tipo_de_contrato'] ?? null,
+                'fecha_publicacion' => $this->formatDate($row['fecha_de_publicacion_del'] ?? null),
+                'fecha_publicacion_sort' => $this->sortDate($row['fecha_de_publicacion_del'] ?? null),
+                'fecha_firma' => null,
+                'fecha_firma_sort' => '',
+                'fecha_inicio' => null,
+                'fecha_fin' => null,
+                'valor_contrato' => $row['precio_base'] ?? null,
+                'valor_adiciones' => null,
+                'valor_total_con_adiciones' => $row['precio_base'] ?? null,
+                'documento' => $documento,
+                'objeto' => $row['descripci_n_del_procedimiento'] ?? $row['nombre_del_procedimiento'] ?? null,
+                'url' => $this->normalizeUrl($row['urlproceso'] ?? ''),
             ];
         })->all();
     }
@@ -192,5 +310,10 @@ class DatosAbiertosSecopService
         }
 
         return $url;
+    }
+
+    protected function digits(string $value): string
+    {
+        return preg_replace('/\D+/', '', $value);
     }
 }
