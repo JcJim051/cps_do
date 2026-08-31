@@ -16,6 +16,8 @@ use Maatwebsite\Excel\Concerns\Exportable;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Carbon\Carbon; // Importamos Carbon para usar today()
 use App\Exports\SeguimientoExport;
+use App\Models\Persona;
+use App\Services\SeguimientoFilterService;
 
 class SeguimientoCrudController extends CrudController
 {
@@ -43,53 +45,62 @@ class SeguimientoCrudController extends CrudController
        
 
         // === FILTROS ===
+        $filterService = app(SeguimientoFilterService::class);
+        $selectedPeopleIds = $filterService->normalizeListRequest($this->crud->getRequest());
+        $selectedPeople = Persona::query()
+            ->whereIn('id', $selectedPeopleIds)
+            ->orderBy('nombre_contratista')
+            ->get(['id', 'nombre_contratista', 'cedula_o_nit'])
+            ->mapWithKeys(fn (Persona $persona) => [
+                $persona->id => trim($persona->nombre_contratista.' — '.($persona->cedula_o_nit ?: 'Sin documento')),
+            ])
+            ->all();
 
-        // Filtro por Persona
         $this->crud->addFilter([
-            'name'  => 'persona_id',
-            'type'  => 'select2',
-            'label' => 'Nombre'
-        ], function () {
-            return \App\Models\Persona::pluck('nombre_contratista', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'persona_id', $value);
+            'name'  => 'personas',
+            'type'  => 'select2_ajax_multiple',
+            'label' => 'Personas',
+            'placeholder' => 'Buscar por nombre o cédula...',
+            'minimum_input_length' => 2,
+            'select_attribute' => 'display_name',
+            'select_key' => 'id',
+            'selected_options' => $selectedPeople,
+        ], route('seguimiento.fetch-personas'), function ($value) use ($filterService) {
+            $ids = $filterService->ids($value);
+            if ($ids !== []) {
+                $this->crud->addClause('whereIn', 'persona_id', $ids);
+            }
         });
 
-        
-      // Filtro por REFERENCIA
-      $this->crud->addFilter([
-        'name'  => 'filtro_referencia',
-        'type'  => 'select2',
+        $this->crud->addFilter([
+            'name'  => 'filtro_referencia',
+            'type'  => 'select2_multiple',
             'label' => 'Referencia',
+            'placeholder' => 'Seleccione referencias',
         ], function () {
-            return \App\Models\Referencia::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->query->whereHas('persona.referencias', function ($q) use ($value) {
-                $q->where('referencia_id', $value);
-            });
-        });
-    
-        // Filtro por CÉDULA o NIT
-        $this->crud->addFilter([
-            'name'  => 'persona_cedula',
-            'type'  => 'select2',
-            'label' => 'Cédula/NIT',
-        ], function () {
-            // Retorna un array 'id' => 'cedula' para usar en el select2
-            return \App\Models\Persona::pluck('cedula_o_nit', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'persona_id', $value);
+            return \App\Models\Referencia::orderBy('nombre')->pluck('nombre', 'id')->toArray();
+        }, function ($value) use ($filterService) {
+            $ids = $filterService->ids($value);
+            if ($ids !== []) {
+                $this->crud->query->whereHas('persona.referencias', function ($query) use ($ids) {
+                    $query->whereIn('referencias.id', $ids);
+                });
+            }
         });
 
         // Estado contrato
         $this->crud->addFilter([
             'name'  => 'estado_contrato_id',
-            'type'  => 'select2',
-            'label' => 'Estado Contrato'
+            'type'  => 'select2_multiple',
+            'label' => 'Estado Contrato',
+            'placeholder' => 'Seleccione estados',
         ], function () {
-            return \App\Models\Estados::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'estado_contrato_id', $value);
+            return \App\Models\Estados::orderBy('nombre')->pluck('nombre', 'id')->toArray();
+        }, function ($value) use ($filterService) {
+            $ids = $filterService->ids($value);
+            if ($ids !== []) {
+                $this->crud->addClause('whereIn', 'estado_contrato_id', $ids);
+            }
         });
 
         // Filtro por observaciones
@@ -107,40 +118,74 @@ class SeguimientoCrudController extends CrudController
         // Año
         $this->crud->addFilter([
             'name'  => 'anio',
-            'type'  => 'dropdown',
-            'label' => 'Año'
+            'type'  => 'select2_multiple',
+            'label' => 'Año',
+            'placeholder' => 'Seleccione años',
         ], function () {
-            return \App\Models\Seguimiento::select('anio')->distinct()->pluck('anio', 'anio')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'anio', $value);
+            return \App\Models\Seguimiento::query()
+                ->whereNotNull('anio')
+                ->select('anio')
+                ->distinct()
+                ->orderByDesc('anio')
+                ->pluck('anio', 'anio')
+                ->toArray();
+        }, function ($value) use ($filterService) {
+            $ids = $filterService->ids($value);
+            if ($ids !== []) {
+                $this->crud->addClause('whereIn', 'anio', $ids);
+            }
         });
 
         // Secretaría
         $this->crud->addFilter([
             'name'  => 'secretaria_id',
-            'type'  => 'select2',
-            'label' => 'Secretaría'
+            'type'  => 'select2_multiple',
+            'label' => 'Secretaría',
+            'placeholder' => 'Seleccione secretarías',
         ], function () {
-            return \App\Models\Secretaria::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'secretaria_id', $value);
+            return \App\Models\Secretaria::orderBy('nombre')->pluck('nombre', 'id')->toArray();
+        }, function ($value) use ($filterService) {
+            $ids = $filterService->ids($value);
+            if ($ids !== []) {
+                $this->crud->addClause('whereIn', 'secretaria_id', $ids);
+            }
         });
 
         // Gerencia
         $this->crud->addFilter([
             'name'  => 'gerencia_id',
-            'type'  => 'select2',
-            'label' => 'Gerencia'
+            'type'  => 'select2_multiple',
+            'label' => 'Gerencia',
+            'placeholder' => 'Seleccione gerencias',
         ], function () {
-            return \App\Models\Gerencia::pluck('nombre', 'id')->toArray();
-        }, function ($value) {
-            $this->crud->addClause('where', 'gerencia_id', $value);
+            return \App\Models\Gerencia::orderBy('nombre')->pluck('nombre', 'id')->toArray();
+        }, function ($value) use ($filterService) {
+            $ids = $filterService->ids($value);
+            if ($ids !== []) {
+                $this->crud->addClause('whereIn', 'gerencia_id', $ids);
+            }
         });
 
 
         $this->crud->setColumns([
             [
-                
+                'name'  => 'secretaria',
+                'label' => 'Dependencia',
+                'type'  => 'relationship',
+                'attribute' => 'nombre',
+                'visibleInExport' => false,
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhereHas('secretaria', function ($q) use ($searchTerm) {
+                        $q->where('nombre', 'like', "%{$searchTerm}%");
+                    });
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'min-width:100px; max-width:150px; white-space:normal; line-height:1.2;',
+                    'title' => '{{ $entry->secretaria->nombre ?? "" }}',
+                ],
+            ],
+            [
                 'name' => 'persona_id',
                 'label' => 'Nombre',
                 'type' => 'relationship',
@@ -158,40 +203,20 @@ class SeguimientoCrudController extends CrudController
                     'title' => '{{$entry->persona->nombre_contratista ?? ""}}'
                 ],
             ],
-            // [
-            //     'label'     => 'Referencias',
-            //     'type'      => 'select_multiple',
-            //     'name'      => 'persona.referencias', // relación anidada
-            //     'entity'    => 'persona.referencias',
-            //     'attribute' => 'nombre',
-            //     'model'     => \App\Models\Referencia::class,
-            // ],
-            // [
-            //     'name' => 'persona.tipo.nombre',
-            //     'label' => 'Tipo',
-            //     'type' => 'relationship',
-            //     'searchLogic' => function ($query, $column, $searchTerm) {
-            //         $query->orWhereHas('persona.tipo', function ($q) use ($searchTerm) {
-            //             $q->where('nombre', 'like', "%{$searchTerm}%");
-            //         });
-            //     },
-            //     'wrapper' => [
-            //         'element' => 'div',
-            //         'style' => 'max-width:90px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
-            //         'title' => '{{$entry->persona->tipo->nombre ?? ""}}'
-            //     ],
-            // ],
             [
-                'name' => 'numero_contrato',
-                'label' => 'Cto',
-                'type' => 'text',
+                'name' => 'persona.cedula_o_nit',
+                'label' => 'Cédula',
+                'type' => 'relationship',
                 'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhere('numero_contrato', 'like', "%{$searchTerm}%");
+                    $query->orWhereHas('persona', function ($q) use ($searchTerm) {
+                        $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
+                    });
                 },
                 'wrapper' => [
                     'element' => 'div',
-                    'style' => 'max-width:60px; text-align:center;'
+                    'style' => 'min-width:78px; white-space:nowrap;',
+                    'title' => '{{$entry->persona->cedula_o_nit ?? ""}}'
                 ],
             ],
             [
@@ -229,6 +254,19 @@ class SeguimientoCrudController extends CrudController
                 ],
             ],
             [
+                'name' => 'numero_contrato',
+                'label' => 'Cto',
+                'type' => 'text',
+                'visibleInExport' => false,
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('numero_contrato', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'max-width:75px; text-align:center; white-space:normal; line-height:1.2;'
+                ],
+            ],
+            [
                 'name'  => 'fecha_acta_inicio',
                 'label' => 'Inicio',
                 'type'  => 'date',
@@ -257,8 +295,24 @@ class SeguimientoCrudController extends CrudController
                 ],
             ],
             [
+                'name'  => 'valor_mensual_visible',
+                'label' => 'Honorarios',
+                'type'  => 'closure',
+                'visibleInExport' => false,
+                'function' => fn ($entry) => $entry->valor_mensual === null
+                    ? ''
+                    : '$ '.number_format((float) $entry->valor_mensual, 0, ',', '.'),
+                'searchLogic' => function ($query, $column, $searchTerm) {
+                    $query->orWhere('valor_mensual', 'like', "%{$searchTerm}%");
+                },
+                'wrapper' => [
+                    'element' => 'div',
+                    'style' => 'min-width:78px; white-space:nowrap; text-align:right;'
+                ],
+            ],
+            [
                 'name'  => 'tiempo_total_ejecucion_dias',
-                'label' => 'Total Días',
+                'label' => 'Tiempo',
                 'type'  => 'number',
                 'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
@@ -266,42 +320,24 @@ class SeguimientoCrudController extends CrudController
                 },
                 'wrapper' => [
                     'element' => 'div',
-                    'style' => 'max-width:80px; text-align:center;'
+                    'style' => 'max-width:55px; text-align:center;'
                 ],
             ],
-            
-            
             [
                 'name'  => 'valor_total_contrato',
                 'label' => 'Valor Total',
                 'type'  => 'closure',
                 'visibleInExport' => false,
-                'function' => function($entry) {
-                    return '$ ' . number_format($entry->valor_total_contrato, 0, ',', '.');
-                },
+                'function' => fn ($entry) => $entry->valor_total_contrato === null
+                    ? ''
+                    : '$ '.number_format((float) $entry->valor_total_contrato, 0, ',', '.'),
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhere('valor_total_contrato', 'like', "%{$searchTerm}%");
                 },
                 'wrapper' => [
                     'element' => 'div',
-                    'style' => 'max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right;',
+                    'style' => 'min-width:84px; white-space:nowrap; text-align:right;',
                     'title' => '{{$entry->valor_total_contrato}}'
-                ],
-            ],
-            [
-                'name' => 'persona.cedula_o_nit',
-                'label' => 'Cédula / NIT',
-                'type' => 'relationship',
-                'visibleInExport' => false,
-                'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhereHas('persona', function ($q) use ($searchTerm) {
-                        $q->where('cedula_o_nit', 'like', "%{$searchTerm}%");
-                    });
-                },
-                'wrapper' => [
-                    'element' => 'div',
-                    'style' => 'max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
-                    'title' => '{{$entry->persona->cedula_o_nit ?? ""}}'
                 ],
             ],
             [
@@ -311,65 +347,14 @@ class SeguimientoCrudController extends CrudController
                 'visibleInExport' => false,
             
                 'function' => function ($entry) {
-                    return $entry->persona->referencias
-                        ->pluck('nombre')
-                        ->implode(', ');
+                    return $entry->persona?->referencias
+                        ?->pluck('nombre')
+                        ?->implode(', ') ?? '';
                 },
-            
                 'escaped' => true,
-            ],
-            [
-                'name'  => 'secretaria',     // relación
-                'label' => 'Secretaría',
-                'type'  => 'relationship',
-                'visibleInExport' => false,
-            
-                'attribute' => 'nombre',     // 👈 CAMPO REAL EN secretarias
-            
-                'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhereHas('secretaria', function ($q) use ($searchTerm) {
-                        $q->where('nombre', 'like', "%{$searchTerm}%");
-                    });
-                },
-            
                 'wrapper' => [
                     'element' => 'div',
-                    'style'   => 'max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
-                    'title'   => '{{ $entry->secretaria->nombre ?? "" }}',
-                ],
-            ],
-            [
-                'name'  => 'gerencia',
-                'label' => 'Gerencia',
-                'type'  => 'relationship',
-                'visibleInExport' => false,
-                'attribute' => 'nombre',
-                'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhereHas('gerencia', function ($q) use ($searchTerm) {
-                        $q->where('nombre', 'like', "%{$searchTerm}%");
-                    });
-                },
-                'wrapper' => [
-                    'element' => 'div',
-                    'style'   => 'max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
-                    'title'   => '{{ $entry->gerencia->nombre ?? "" }}',
-                ],
-            ],
-            [
-                'name'  => 'fuente',
-                'label' => 'Fuente de Financiación',
-                'type'  => 'relationship',
-                'visibleInExport' => false,
-                'attribute' => 'nombre',
-                'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhereHas('fuente', function ($q) use ($searchTerm) {
-                        $q->where('nombre', 'like', "%{$searchTerm}%");
-                    });
-                },
-                'wrapper' => [
-                    'element' => 'div',
-                    'style'   => 'max-width:140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
-                    'title'   => '{{ $entry->fuente->nombre ?? "" }}',
+                    'style' => 'min-width:90px; max-width:145px; white-space:normal; line-height:1.2;',
                 ],
             ],
             // Campos solo para export DataTable (ocultos en listado)
@@ -1050,13 +1035,28 @@ class SeguimientoCrudController extends CrudController
     
                 $html = "<div class='row'>";
 
-                $html .= view('admin.seguimiento.tracking_context', compact('entry'))->render();
+                $html .= view()->exists('admin.seguimiento.tracking_context')
+                    ? view('admin.seguimiento.tracking_context', compact('entry'))->render()
+                    : self::renderFallbackSection('Contexto del seguimiento', [
+                        'Nombre' => $entry->persona?->nombre_contratista,
+                        'Cédula / NIT' => $entry->persona?->cedula_o_nit,
+                        'Dependencia' => $entry->secretaria?->nombre,
+                        'Gerencia' => $entry->gerencia?->nombre,
+                    ]);
     
                 // 🔹 Contrato (mantener en 4 columnas)
                 if ($entry->tipo === 'contrato') {
-                    $html .= view('admin.seguimiento.contract_information', compact('entry'))->render();
+                    $html .= view()->exists('admin.seguimiento.contract_information')
+                        ? view('admin.seguimiento.contract_information', compact('entry'))->render()
+                        : self::renderFallbackSection('Información del contrato', $contrato);
                     // Las autorizaciones quedan después del resumen contractual para priorizar el estado vigente.
-                    $html .= view('admin.seguimiento.authorization_flow', compact('entry'))->render();
+                    $html .= view()->exists('admin.seguimiento.authorization_flow')
+                        ? view('admin.seguimiento.authorization_flow', compact('entry'))->render()
+                        : self::renderFallbackSection('Autorizaciones', [
+                            'Despacho' => $entry->aut_despacho ? 'Sí' : 'No',
+                            'Planeación' => $entry->aut_planeacion ? 'Sí' : 'No',
+                            'Administrativa' => $entry->aut_administrativa ? 'Sí' : 'No',
+                        ]);
                 }
     
                 // 🔹 Entrevista (mantener en 4 columnas)
@@ -1078,7 +1078,9 @@ class SeguimientoCrudController extends CrudController
             'label' => 'Control de campos SECOP',
             'type' => 'closure',
             'escaped' => false,
-            'function' => fn ($entry) => view('admin.seguimiento.secop_field_control', compact('entry'))->render(),
+            'function' => fn ($entry) => view()->exists('admin.seguimiento.secop_field_control')
+                ? view('admin.seguimiento.secop_field_control', compact('entry'))->render()
+                : '<div class="alert alert-warning mb-0">El control de campos SECOP no está disponible en este despliegue.</div>',
         ]);
 
         $this->crud->addColumn([
@@ -1086,8 +1088,20 @@ class SeguimientoCrudController extends CrudController
             'label' => 'Histórico de aplicaciones SECOP',
             'type' => 'closure',
             'escaped' => false,
-            'function' => fn ($entry) => view('admin.seguimiento.secop_history', compact('entry'))->render(),
+            'function' => fn ($entry) => view()->exists('admin.seguimiento.secop_history')
+                ? view('admin.seguimiento.secop_history', compact('entry'))->render()
+                : '<div class="alert alert-warning mb-0">El histórico SECOP no está disponible en este despliegue.</div>',
         ]);
+    }
+
+    protected static function renderFallbackSection(string $title, array $values): string
+    {
+        $html = '<div class="col-12"><h5 class="mt-3 text-primary">'.e($title).'</h5><div class="row">';
+        foreach ($values as $label => $value) {
+            $html .= self::renderCard(e($label), $value === null || $value === '' ? null : e((string) $value), 3);
+        }
+
+        return $html.'</div></div>';
     }
     
     // ✅ Helper actualizado para controlar columnas
@@ -1103,50 +1117,34 @@ class SeguimientoCrudController extends CrudController
                 </div>
             </div>';
     }
-    public function exportExcel(Request $request)
+    public function fetchPersonas(Request $request)
     {
-       
-        // Partimos de la query base
-        $query = $this->crud->model->newQuery();
+        $term = trim((string) ($request->input('q') ?? $request->input('term') ?? ''));
+        $query = Persona::query()->select(['id', 'nombre_contratista', 'cedula_o_nit']);
 
-        // Filtramos automáticamente según todos los query parameters que existan
-        $filters = $request->all(); // trae todos los filtros de la URL
-
-        foreach ($filters as $key => $value) {
-            if ($value === null || $value === '') continue; // ignorar vacíos
-
-            switch ($key) {
-                case 'anio':
-                case 'estado_contrato_id':
-                case 'secretaria_id':
-                case 'gerencia_id':
-                    $query->where($key, $value);
-                    break;
-
-                case 'persona_id':
-                    $query->where('persona_id', $value);
-                    break;
-
-                case 'persona_cedula':
-                    $query->whereHas('persona', fn($q) => $q->where('cedula_o_nit', $value));
-                    break;
-
-                case 'observaciones':
-                    $query->where(function($q) use ($value) {
-                        $q->where('observaciones', 'LIKE', "%$value%")
-                        ->orWhere('observaciones_contrato', 'LIKE', "%$value%");
-                    });
-                    break;
-
-                // aquí puedes agregar más filtros si los agregas en el CRUD
-            }
+        if ($term !== '') {
+            $query->where(function ($personQuery) use ($term) {
+                $personQuery
+                    ->where('nombre_contratista', 'like', "%{$term}%")
+                    ->orWhere('cedula_o_nit', 'like', "%{$term}%");
+            });
         }
 
-        // Obtener registros filtrados
-        $entries = $query->get();
+        return $query
+            ->orderBy('nombre_contratista')
+            ->paginate(20)
+            ->through(fn (Persona $persona) => [
+                'id' => $persona->id,
+                'display_name' => trim($persona->nombre_contratista.' — '.($persona->cedula_o_nit ?: 'Sin documento')),
+            ]);
+    }
 
-        // Exportar
-        return Excel::download(new SeguimientoExport($entries), 'seguimientos_filtrados.xlsx');
+    public function exportExcel(Request $request, SeguimientoFilterService $filterService)
+    {
+        $query = \App\Models\Seguimiento::query()->with('persona');
+        $filterService->apply($query, $request->query());
+
+        return Excel::download(new SeguimientoExport($query->get()), 'seguimientos_filtrados.xlsx');
     }
 
 

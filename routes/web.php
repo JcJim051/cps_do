@@ -3,7 +3,6 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\GerenciaController;
 use App\Http\Controllers\Admin\PersonaExportController;
-use App\Http\Controllers\Admin\SeguimientoCrudController;
 
 
 Route::get('/', function () {
@@ -23,11 +22,8 @@ Route::get('seguimiento/{id}/print', function ($id) {
 
 
 
-Route::get('admin/seguimiento/export-excel', [SeguimientoCrudController::class, 'exportExcel'])
-    ->name('seguimiento.export-excel');
 Route::get('admin/seguimiento-nom/export-excel', [\App\Http\Controllers\Admin\SeguimientoNomCrudController::class, 'exportExcel'])
     ->name('seguimiento-nom.export-excel');
-
 
 
 

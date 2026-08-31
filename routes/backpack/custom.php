@@ -81,6 +81,8 @@ Route::group([
 
    
     Route::crud('persona', 'PersonaCrudController');
+    Route::get('seguimiento/fetch-personas', 'SeguimientoCrudController@fetchPersonas')->name('seguimiento.fetch-personas');
+    Route::get('seguimiento/export-excel', 'SeguimientoCrudController@exportExcel')->name('seguimiento.export-excel');
     Route::crud('seguimiento', 'SeguimientoCrudController');
     Route::crud('seguimiento-nom', 'SeguimientoNomCrudController');
     Route::get('person/import', 'App\Http\Controllers\Admin\PersonaCrudController@importForm')->name('person.importForm');
