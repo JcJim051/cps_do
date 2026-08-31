@@ -145,6 +145,7 @@ class SeguimientoCrudController extends CrudController
                 'label' => 'Nombre',
                 'type' => 'relationship',
                 'attribute' => 'nombre_contratista',
+                'limit' => 100,
                 'visibleInExport' => false,
                 'searchLogic' => function ($query, $column, $searchTerm) {
                     $query->orWhereHas('persona', function ($q) use ($searchTerm) {
@@ -153,7 +154,7 @@ class SeguimientoCrudController extends CrudController
                 },
                 'wrapper' => [
                     'element' => 'div',
-                    'style' => 'max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;',
+                    'class' => 'integra-person-name',
                     'title' => '{{$entry->persona->nombre_contratista ?? ""}}'
                 ],
             ],
@@ -1016,31 +1017,6 @@ class SeguimientoCrudController extends CrudController
             'escaped'  => false,
             'function' => function ($entry) {
     
-                $persona = $entry->persona;
-                $personaCampos = [
-                    'Nombre' => $persona?->nombre_contratista,
-                    'Cédula/NIT' => $persona?->cedula_o_nit,
-                    'Celular' => $persona?->celular,
-                ];
-    
-                $generales = [
-                    'Tipo' => ucfirst($entry->tipo),
-                    'Secretaría' => $entry->secretaria?->nombre,
-                    'Gerencia' => $entry->gerencia?->nombre,
-                ];
-    
-                $autorizaciones = [
-                    'Aut. Despacho' => $entry->aut_despacho ? '✅' : '❌',
-                    'Aut. Planeación' => $entry->aut_planeacion ? '✅' : '❌',
-                    'Aut. Administrativa' => $entry->aut_administrativa ? '✅' : '❌',
-                ];
-
-                if ($entry->adicion === 'SI') {
-                    $autorizaciones['Aut. Despacho Adición'] = $entry->aut_despacho_adicion ? '✅' : '❌';
-                    $autorizaciones['Aut. Planeación Adición'] = $entry->aut_planeacion_adicion ? '✅' : '❌';
-                    $autorizaciones['Aut. Administrativa Adición'] = $entry->aut_administrativa_adicion ? '✅' : '❌';
-                }
-    
                 $entrevista = [
                     'Fecha Entrevista' => $entry->fecha_entrevista,
                     'Estado (Entrevista)' => $entry->estado?->nombre,
@@ -1066,79 +1042,21 @@ class SeguimientoCrudController extends CrudController
                     'Fecha Acta Inicio Adic.' => $entry->fecha_acta_inicio_adicion,
                     'Fecha Finalización Adic.' => $entry->fecha_finalizacion_adicion,
                     'Tiempo Ejecución Adic.' => $entry->tiempo_ejecucion_dias_adicion,
+                    'Extensión calendario SECOP' => $entry->tiempo_extension_secop_dias !== null ? $entry->tiempo_extension_secop_dias.' días' : null,
+                    'Suspensión derivada' => $entry->tiempo_suspension_dias !== null ? $entry->tiempo_suspension_dias.' días' : null,
+                    'Total calendario' => $entry->tiempo_total_calendario_dias !== null ? $entry->tiempo_total_calendario_dias.' días' : null,
                     'Valor Adición' => $entry->valor_adicion,
                 ];
     
                 $html = "<div class='row'>";
-    
-                // 🔹 Datos de la Persona (3 columnas)
-                $html .= "<div class='col-12'><h5 class='mt-3 text-primary'>Datos de la Persona</h5><div class='row'>";
-                foreach ($personaCampos as $label => $valor) {
-                    $html .= self::renderCard($label, $valor, 4); // col-md-4 = 3 columnas
-                }
-                $html .= "</div></div>";
-    
-                // 🔹 Datos Generales (3 columnas)
-                $html .= "<div class='col-12'><h5 class='mt-3 text-primary'>Datos Generales</h5><div class='row'>";
-                foreach ($generales as $label => $valor) {
-                    $html .= self::renderCard($label, $valor, 4);
-                }
-                $html .= "</div></div>";
-    
-                // 🔹 Autorizaciones (3 columnas)
-                $html .= "<div class='col-12'><h5 class='mt-3 text-primary'>Autorizaciones</h5><div class='row'>";
-                foreach ($autorizaciones as $label => $valor) {
-                    $html .= self::renderCard($label, $valor, 4);
-                }
-                $html .= "</div></div>";
+
+                $html .= view('admin.seguimiento.tracking_context', compact('entry'))->render();
     
                 // 🔹 Contrato (mantener en 4 columnas)
                 if ($entry->tipo === 'contrato') {
-                    $html .= "<div class='col-12'><h5 class='mt-4 text-success'>Información del Contrato</h5><div class='row'>";
-                    foreach ($contrato as $label => $valor) {
-                        $html .= self::renderCard($label, $valor, 3); // col-md-3 = 4 columnas
-                    }
-                    $html .= "</div></div>";
-
-                    $link = $entry->vinculoSecop;
-                    if ($link && (!$link->ultima_consulta_at || $link->ultima_consulta_at->lt(now()->subMinutes(10)))) {
-                        try {
-                            app(\App\Services\SecopVinculacionService::class)->refrescar($link);
-                            $link->refresh();
-                        } catch (\Throwable $e) {
-                            Log::warning('No se pudo refrescar SECOP al abrir seguimiento '.$entry->id.': '.$e->getMessage());
-                        }
-                    }
-                    $snapshot = $link?->ultimaInstantanea;
-                    $html .= "<div class='col-12'><div class='d-flex justify-content-between align-items-center mt-4'><h5 class='text-info mb-0'>Datos observados en SECOP</h5><div>";
-                    if ($link) {
-                        $html .= '<form class="d-inline" method="POST" action="'.e(route('seguimiento.secop.refresh', $entry)).'">'
-                            .csrf_field().'<button class="btn btn-sm btn-outline-primary">Refrescar</button></form> ';
-                        $html .= '<form class="d-inline" method="POST" action="'.e(route('seguimiento.secop.unlink', $entry)).'">'
-                            .csrf_field().method_field('DELETE').'<button class="btn btn-sm btn-outline-danger" onclick="return confirm(\'¿Desvincular SECOP?\')">Desvincular</button></form>';
-                    } else {
-                        $html .= '<a class="btn btn-sm btn-primary" href="'.e(route('seguimiento.secop.candidates', $entry)).'">Buscar y vincular</a>';
-                    }
-                    $html .= '</div></div><div class="row mt-2">';
-                    if ($snapshot) {
-                        $secopData = [
-                            'Fuente / identificador' => e($link->fuente_secop.' · '.$link->identificador_externo),
-                            'Estado / fase' => e($snapshot->estado ?: $snapshot->fase ?: '-'),
-                            'Inicio SECOP' => $snapshot->fecha_inicio?->format('d/m/Y'),
-                            'Fin SECOP' => $snapshot->fecha_fin?->format('d/m/Y'),
-                            'Valor SECOP' => $snapshot->valor_total !== null ? '$ '.number_format($snapshot->valor_total, 0, ',', '.') : null,
-                            'Diferencia de valor' => $snapshot->valor_total !== null && $entry->valor_total_contrato !== null
-                                ? '$ '.number_format($snapshot->valor_total - $entry->valor_total_contrato, 0, ',', '.') : null,
-                            'Última consulta' => $snapshot->consultado_at?->format('d/m/Y H:i'),
-                            'Proceso' => $snapshot->url ? '<a target="_blank" href="'.e($snapshot->url).'">Abrir en SECOP</a>' : null,
-                        ];
-                        foreach ($secopData as $label => $valor) {
-                            $html .= self::renderCard($label, $valor, 3);
-                        }
-                    } else {
-                        $html .= '<div class="col-12"><div class="alert alert-light border">Sin vínculo SECOP confirmado. Los valores anteriores permanecen como planeación.</div></div>';
-                    }
-                    $html .= '</div></div>';
+                    $html .= view('admin.seguimiento.contract_information', compact('entry'))->render();
+                    // Las autorizaciones quedan después del resumen contractual para priorizar el estado vigente.
+                    $html .= view('admin.seguimiento.authorization_flow', compact('entry'))->render();
                 }
     
                 // 🔹 Entrevista (mantener en 4 columnas)
@@ -1153,6 +1071,22 @@ class SeguimientoCrudController extends CrudController
                 $html .= "</div>";
                 return $html;
             }
+        ]);
+
+        $this->crud->addColumn([
+            'name' => 'control_campos_secop',
+            'label' => 'Control de campos SECOP',
+            'type' => 'closure',
+            'escaped' => false,
+            'function' => fn ($entry) => view('admin.seguimiento.secop_field_control', compact('entry'))->render(),
+        ]);
+
+        $this->crud->addColumn([
+            'name' => 'historico_aplicaciones_secop',
+            'label' => 'Histórico de aplicaciones SECOP',
+            'type' => 'closure',
+            'escaped' => false,
+            'function' => fn ($entry) => view('admin.seguimiento.secop_history', compact('entry'))->render(),
         ]);
     }
     

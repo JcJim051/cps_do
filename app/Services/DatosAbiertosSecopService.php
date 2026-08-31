@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Http;
 
 class DatosAbiertosSecopService
 {
+    public function __construct(private SecopNormalizer $normalizer)
+    {
+    }
+
     public function consultarPorDocumento(string $documento, ?string $desde = null, int $limit = 1000): array
     {
         $secop2 = $this->consultarSecop2($documento, $desde, $limit);
@@ -19,6 +23,37 @@ class DatosAbiertosSecopService
             })
             ->values()
             ->all();
+    }
+
+    /** Consulta contratos vinculados en lotes, usando el identificador estable de cada conjunto. */
+    public function consultarPorIdentificadores(string $fuente, array $identificadores): array
+    {
+        $identificadores = collect($identificadores)->filter()->unique()->values();
+        if ($identificadores->isEmpty()) return [];
+
+        $rows = collect();
+        foreach ($identificadores->chunk(40) as $chunk) {
+            $field = $fuente === 'secop1' ? 'uid' : 'id_contrato';
+            $usable = $chunk->filter(fn ($id) => $fuente !== 'secop1' || !str_contains((string) $id, '|'));
+            if ($usable->isEmpty()) continue;
+            $quoted = $usable->map(fn ($id) => "'".str_replace("'", "''", (string) $id)."'")->implode(',');
+            $response = Http::timeout(25)->get(
+                $fuente === 'secop1'
+                    ? 'https://www.datos.gov.co/resource/f789-7hwg.json'
+                    : 'https://www.datos.gov.co/resource/jbjy-vk9h.json',
+                [
+                    '$select' => $fuente === 'secop1' ? $this->secop1Select() : $this->secop2Select(),
+                    '$where' => "{$field} in({$quoted})",
+                    '$limit' => $usable->count(),
+                ],
+            );
+            if (!$response->ok()) throw new \RuntimeException(strtoupper($fuente).' HTTP '.$response->status());
+            $rows->push(...collect($response->json())->map(
+                fn (array $row) => $fuente === 'secop1' ? $this->mapSecop1($row) : $this->mapSecop2($row)
+            ));
+        }
+
+        return $rows->keyBy(fn (array $row) => (string) $row['identificador_externo'])->all();
     }
 
     public function consultarCandidatos(string $documento, ?string $nitEntidad = null, int $limit = 200): array
@@ -52,36 +87,53 @@ class DatosAbiertosSecopService
                 && (string) ($row['identificador_externo'] ?? '') === $identificador);
     }
 
+    public function consultarReferenciaEntidad(string $referencia, int $anio, string $nitEntidad, int $limit = 50): array
+    {
+        $normalized = $this->normalizer->contrato($referencia, $anio);
+        if (!$normalized['consecutivo']) {
+            return [];
+        }
+
+        $needle = str_replace("'", "''", $normalized['consecutivo']);
+        $where = $this->nitWhere('nit_entidad', $nitEntidad, false)
+            ." AND fecha_de_firma >= '{$anio}-01-01T00:00:00.000'"
+            ." AND fecha_de_firma < '".($anio + 1)."-01-01T00:00:00.000'"
+            ." AND upper(referencia_del_contrato) like '%{$needle}%'";
+
+        $response = Http::timeout(12)->get('https://www.datos.gov.co/resource/jbjy-vk9h.json', [
+            '$select' => $this->secop2Select(),
+            '$where' => $where,
+            '$order' => 'fecha_de_firma DESC',
+            '$limit' => $limit,
+        ]);
+
+        if (!$response->ok()) {
+            throw new \RuntimeException('SECOP II HTTP '.$response->status());
+        }
+
+        return collect($response->json())
+            ->map(fn (array $row) => $this->mapSecop2($row))
+            ->filter(function (array $row) use ($normalized) {
+                return $this->normalizer->contrato(
+                    $row['referencia_contrato'] ?? '',
+                    $row['fecha_firma'] ?? null,
+                )['clave'] === $normalized['clave'];
+            })
+            ->values()
+            ->all();
+    }
+
     protected function consultarSecop2(string $documento, ?string $desde, int $limit, ?string $nitEntidad = null): array
     {
         $baseUrl = 'https://www.datos.gov.co/resource/jbjy-vk9h.json';
-        $select = implode(', ', [
-            'nombre_entidad',
-            'nit_entidad',
-            'departamento',
-            'ciudad',
-            'proceso_de_compra',
-            'id_contrato',
-            'referencia_del_contrato',
-            'estado_contrato',
-            'tipo_de_contrato',
-            'modalidad_de_contratacion',
-            'fecha_de_firma',
-            'fecha_de_inicio_del_contrato',
-            'fecha_de_fin_del_contrato',
-            'valor_del_contrato',
-            'proveedor_adjudicado',
-            'documento_proveedor',
-            'urlproceso',
-            'objeto_del_contrato',
-        ]);
+        $select = $this->secop2Select();
 
         $where = "documento_proveedor = '{$documento}'";
         if ($desde !== null && $desde !== '') {
             $where .= " AND fecha_de_firma >= '{$desde}T00:00:00.000'";
         }
         if ($nitEntidad) {
-            $where .= " AND nit_entidad = ".$this->digits($nitEntidad);
+            $where .= ' AND '.$this->nitWhere('nit_entidad', $nitEntidad, false);
         }
 
         $response = Http::timeout(12)->get($baseUrl, [
@@ -95,69 +147,20 @@ class DatosAbiertosSecopService
             throw new \RuntimeException('SECOP II HTTP '.$response->status());
         }
 
-        return collect($response->json())->map(function (array $row) {
-            return [
-                'fuente' => 'SECOP II',
-                'fuente_codigo' => 'secop2',
-                'nombre_entidad' => $row['nombre_entidad'] ?? null,
-                'nit_entidad' => $row['nit_entidad'] ?? null,
-                'departamento' => $row['departamento'] ?? null,
-                'ciudad' => $row['ciudad'] ?? null,
-                'proceso_de_compra' => $row['proceso_de_compra'] ?? null,
-                'id_proceso' => $row['proceso_de_compra'] ?? null,
-                'id_contrato' => $row['id_contrato'] ?? null,
-                'referencia_contrato' => $row['referencia_del_contrato'] ?? null,
-                'identificador_externo' => $row['id_contrato'] ?? $row['referencia_del_contrato'] ?? $row['proceso_de_compra'] ?? null,
-                'tipo_registro' => 'contrato',
-                'estado' => $row['estado_contrato'] ?? null,
-                'tipo' => $row['tipo_de_contrato'] ?? null,
-                'modalidad' => $row['modalidad_de_contratacion'] ?? null,
-                'fecha_firma' => $this->formatDate($row['fecha_de_firma'] ?? null),
-                'fecha_firma_sort' => $this->sortDate($row['fecha_de_firma'] ?? null),
-                'fecha_inicio' => $this->formatDate($row['fecha_de_inicio_del_contrato'] ?? null),
-                'fecha_fin' => $this->formatDate($row['fecha_de_fin_del_contrato'] ?? null),
-                'valor_contrato' => $row['valor_del_contrato'] ?? null,
-                'valor_adiciones' => null,
-                'valor_total_con_adiciones' => $row['valor_del_contrato'] ?? null,
-                'proveedor' => $row['proveedor_adjudicado'] ?? null,
-                'documento' => $row['documento_proveedor'] ?? null,
-                'objeto' => $row['objeto_del_contrato'] ?? null,
-                'url' => $this->normalizeUrl($row['urlproceso'] ?? ''),
-            ];
-        })->all();
+        return collect($response->json())->map(fn (array $row) => $this->mapSecop2($row))->all();
     }
 
     protected function consultarSecop1(string $documento, ?string $desde, int $limit, ?string $nitEntidad = null): array
     {
         $baseUrl = 'https://www.datos.gov.co/resource/f789-7hwg.json';
-        $select = implode(', ', [
-            'nombre_entidad',
-            'nit_de_la_entidad',
-            'c_digo_de_la_entidad',
-            'departamento_entidad',
-            'municipio_entidad',
-            'numero_de_proceso',
-            'estado_del_proceso',
-            'tipo_de_contrato',
-            'modalidad_de_contratacion',
-            'fecha_de_firma_del_contrato',
-            'fecha_ini_ejec_contrato',
-            'fecha_fin_ejec_contrato',
-            'cuantia_contrato',
-            'valor_total_de_adiciones',
-            'valor_contrato_con_adiciones',
-            'nom_razon_social_contratista',
-            'identificacion_del_contratista',
-            'ruta_proceso_en_secop_i',
-            'objeto_del_contrato_a_la',
-        ]);
+        $select = $this->secop1Select();
 
         $where = "identificacion_del_contratista = '{$documento}'";
         if ($desde !== null && $desde !== '') {
             $where .= " AND fecha_de_firma_del_contrato >= '{$desde}T00:00:00.000'";
         }
         if ($nitEntidad) {
-            $where .= " AND nit_de_la_entidad = '".$this->digits($nitEntidad)."'";
+            $where .= ' AND '.$this->nitWhere('nit_de_la_entidad', $nitEntidad, true);
         }
 
         $response = Http::timeout(12)->get($baseUrl, [
@@ -171,8 +174,27 @@ class DatosAbiertosSecopService
             throw new \RuntimeException('SECOP I HTTP '.$response->status());
         }
 
-        return collect($response->json())->map(function (array $row) {
-            return [
+        return collect($response->json())->map(fn (array $row) => $this->mapSecop1($row))->all();
+    }
+
+    private function secop1Select(): string
+    {
+        return implode(', ', [
+            'uid', 'nombre_entidad', 'nit_de_la_entidad', 'c_digo_de_la_entidad',
+            'departamento_entidad', 'municipio_entidad', 'numero_de_proceso', 'numero_de_contrato',
+            'estado_del_proceso', 'tipo_de_contrato', 'modalidad_de_contratacion',
+            'fecha_de_firma_del_contrato', 'fecha_ini_ejec_contrato', 'fecha_fin_ejec_contrato',
+            'plazo_de_ejec_del_contrato', 'rango_de_ejec_del_contrato',
+            'tiempo_adiciones_en_dias', 'tiempo_adiciones_en_meses', 'marcacion_adiciones',
+            'cuantia_contrato', 'valor_total_de_adiciones', 'valor_contrato_con_adiciones',
+            'ultima_actualizacion', 'nom_razon_social_contratista', 'identificacion_del_contratista',
+            'ruta_proceso_en_secop_i', 'objeto_del_contrato_a_la',
+        ]);
+    }
+
+    private function mapSecop1(array $row): array
+    {
+        return [
                 'fuente' => 'SECOP I',
                 'fuente_codigo' => 'secop1',
                 'nombre_entidad' => $row['nombre_entidad'] ?? null,
@@ -182,8 +204,12 @@ class DatosAbiertosSecopService
                 'proceso_de_compra' => $row['numero_de_proceso'] ?? null,
                 'id_proceso' => $row['numero_de_proceso'] ?? null,
                 'id_contrato' => null,
-                'referencia_contrato' => $row['numero_de_proceso'] ?? null,
-                'identificador_externo' => implode('|', array_filter([
+                'referencia_contrato' => $row['numero_de_contrato'] ?? $row['numero_de_proceso'] ?? null,
+                'identificador_externo' => $row['uid'] ?? implode('|', array_filter([
+                    $row['c_digo_de_la_entidad'] ?? $row['nit_de_la_entidad'] ?? null,
+                    $row['numero_de_proceso'] ?? null,
+                ])),
+                'identificador_legacy' => implode('|', array_filter([
                     $row['c_digo_de_la_entidad'] ?? $row['nit_de_la_entidad'] ?? null,
                     $row['numero_de_proceso'] ?? null,
                 ])),
@@ -195,6 +221,12 @@ class DatosAbiertosSecopService
                 'fecha_firma_sort' => $this->sortDate($row['fecha_de_firma_del_contrato'] ?? null),
                 'fecha_inicio' => $this->formatDate($row['fecha_ini_ejec_contrato'] ?? null),
                 'fecha_fin' => $this->formatDate($row['fecha_fin_ejec_contrato'] ?? null),
+                'duracion_inicial' => $row['plazo_de_ejec_del_contrato'] ?? null,
+                'unidad_duracion' => $row['rango_de_ejec_del_contrato'] ?? null,
+                'dias_adicionados' => $row['tiempo_adiciones_en_dias'] ?? null,
+                'meses_adicionados' => $row['tiempo_adiciones_en_meses'] ?? null,
+                'marcacion_adicion' => $row['marcacion_adiciones'] ?? null,
+                'ultima_actualizacion_fuente' => $row['ultima_actualizacion'] ?? null,
                 'valor_contrato' => $row['cuantia_contrato'] ?? null,
                 'valor_adiciones' => $row['valor_total_de_adiciones'] ?? null,
                 'valor_total_con_adiciones' => $row['valor_contrato_con_adiciones'] ?? null,
@@ -203,14 +235,13 @@ class DatosAbiertosSecopService
                 'objeto' => $row['objeto_del_contrato_a_la'] ?? null,
                 'url' => $this->normalizeUrl($row['ruta_proceso_en_secop_i'] ?? ''),
             ];
-        })->all();
     }
 
     protected function consultarProcesosSecop2(string $documento, ?string $nitEntidad, int $limit): array
     {
         $where = "nit_proveedor = '".$this->digits($documento)."'";
         if ($nitEntidad) {
-            $where .= " AND nit_entidad = '".$this->digits($nitEntidad)."'";
+            $where .= ' AND '.$this->nitWhere('nit_entidad', $nitEntidad, true);
         }
 
         $proponentes = Http::timeout(15)->get('https://www.datos.gov.co/resource/hgi6-6wh3.json', [
@@ -278,6 +309,71 @@ class DatosAbiertosSecopService
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    private function nitWhere(string $field, string $nit, bool $quoted): string
+    {
+        $values = $this->normalizer->variantesNit($nit);
+        if ($values === []) {
+            return '1 = 0';
+        }
+
+        $conditions = collect($values)->map(function (string $value) use ($field, $quoted) {
+            $safe = preg_replace('/\D+/', '', $value) ?? '';
+            return $field.' = '.($quoted ? "'{$safe}'" : $safe);
+        });
+
+        return '('.$conditions->implode(' OR ').')';
+    }
+
+    private function secop2Select(): string
+    {
+        return implode(', ', [
+            'nombre_entidad', 'nit_entidad', 'departamento', 'ciudad', 'proceso_de_compra',
+            'id_contrato', 'referencia_del_contrato', 'estado_contrato', 'tipo_de_contrato',
+            'modalidad_de_contratacion', 'fecha_de_firma', 'fecha_de_inicio_del_contrato',
+            'fecha_de_fin_del_contrato', 'valor_del_contrato', 'proveedor_adjudicado',
+            'duraci_n_del_contrato', 'dias_adicionados', 'ultima_actualizacion',
+            'documento_proveedor', 'urlproceso', 'objeto_del_contrato',
+        ]);
+    }
+
+    private function mapSecop2(array $row): array
+    {
+        return [
+            'fuente' => 'SECOP II',
+            'fuente_codigo' => 'secop2',
+            'nombre_entidad' => $row['nombre_entidad'] ?? null,
+            'nit_entidad' => $row['nit_entidad'] ?? null,
+            'departamento' => $row['departamento'] ?? null,
+            'ciudad' => $row['ciudad'] ?? null,
+            'proceso_de_compra' => $row['proceso_de_compra'] ?? null,
+            'id_proceso' => $row['proceso_de_compra'] ?? null,
+            'id_contrato' => $row['id_contrato'] ?? null,
+            'referencia_contrato' => $row['referencia_del_contrato'] ?? null,
+            'identificador_externo' => $row['id_contrato'] ?? $row['referencia_del_contrato'] ?? $row['proceso_de_compra'] ?? null,
+            'tipo_registro' => 'contrato',
+            'estado' => $row['estado_contrato'] ?? null,
+            'tipo' => $row['tipo_de_contrato'] ?? null,
+            'modalidad' => $row['modalidad_de_contratacion'] ?? null,
+            'fecha_firma' => $this->formatDate($row['fecha_de_firma'] ?? null),
+            'fecha_firma_sort' => $this->sortDate($row['fecha_de_firma'] ?? null),
+            'fecha_inicio' => $this->formatDate($row['fecha_de_inicio_del_contrato'] ?? null),
+            'fecha_fin' => $this->formatDate($row['fecha_de_fin_del_contrato'] ?? null),
+            'duracion_inicial' => $row['duraci_n_del_contrato'] ?? null,
+            'unidad_duracion' => null,
+            'dias_adicionados' => $row['dias_adicionados'] ?? null,
+            'meses_adicionados' => null,
+            'marcacion_adicion' => null,
+            'ultima_actualizacion_fuente' => $row['ultima_actualizacion'] ?? null,
+            'valor_contrato' => $row['valor_del_contrato'] ?? null,
+            'valor_adiciones' => null,
+            'valor_total_con_adiciones' => $row['valor_del_contrato'] ?? null,
+            'proveedor' => $row['proveedor_adjudicado'] ?? null,
+            'documento' => $row['documento_proveedor'] ?? null,
+            'objeto' => $row['objeto_del_contrato'] ?? null,
+            'url' => $this->normalizeUrl($row['urlproceso'] ?? ''),
+        ];
     }
 
     protected function sortDate($value): string

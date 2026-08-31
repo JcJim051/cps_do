@@ -8,7 +8,10 @@ use App\Models\User;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('secop:refresh-links')->dailyAt('02:30')->withoutOverlapping();
+Schedule::command('secop:refresh-links --year=2026')
+    ->dailyAt('02:30')
+    ->timezone('America/Bogota')
+    ->withoutOverlapping();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

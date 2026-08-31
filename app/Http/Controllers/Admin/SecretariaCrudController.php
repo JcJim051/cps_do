@@ -48,6 +48,8 @@ class SecretariaCrudController extends CrudController
             'name' => 'nombre', // o el campo real en tu tabla
             'label' => 'Nombre'
         ]);
+        CRUD::addColumn(['name' => 'nit_secop', 'label' => 'NIT SECOP']);
+        CRUD::addColumn(['name' => 'nombre_secop', 'label' => 'Entidad en SECOP']);
     }
 
     /**
@@ -59,7 +61,18 @@ class SecretariaCrudController extends CrudController
     protected function setupCreateOperation()
     {
         CRUD::setValidation(SecretariaRequest::class);
-        CRUD::setFromDb(); // set fields from db columns.
+        CRUD::addField(['name' => 'nombre', 'label' => 'Nombre']);
+        CRUD::addField(['name' => 'convencion', 'label' => 'Convención']);
+        CRUD::addField([
+            'name' => 'nit_secop',
+            'label' => 'NIT de la entidad contratante en SECOP',
+            'hint' => 'Puede escribirse con o sin dígito de verificación; Integra consultará ambas variantes.',
+        ]);
+        CRUD::addField([
+            'name' => 'nombre_secop',
+            'label' => 'Nombre de la entidad en SECOP',
+            'hint' => 'Ejemplo: DEPARTAMENTO DEL META.',
+        ]);
 
         /**
          * Fields can be defined using the fluent syntax:

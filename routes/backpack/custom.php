@@ -68,6 +68,13 @@ Route::group([
         Route::post('seguimiento/{seguimiento}/vincular-secop', 'SeguimientoSecopController@link')->whereNumber('seguimiento')->name('seguimiento.secop.link');
         Route::delete('seguimiento/{seguimiento}/vinculo-secop', 'SeguimientoSecopController@unlink')->whereNumber('seguimiento')->name('seguimiento.secop.unlink');
         Route::post('seguimiento/{seguimiento}/refrescar-secop', 'SeguimientoSecopController@refresh')->whereNumber('seguimiento')->name('seguimiento.secop.refresh');
+        Route::post('seguimiento/{seguimiento}/secop/campo/{field}/restaurar', 'SeguimientoSecopController@restoreField')->whereNumber('seguimiento')->name('seguimiento.secop.restore-field');
+        Route::post('seguimiento/{seguimiento}/secop/actualizacion/{actualizacion}/revertir', 'SeguimientoSecopController@revert')->whereNumber('seguimiento')->whereNumber('actualizacion')->name('seguimiento.secop.revert');
+        Route::post('seguimiento/{seguimiento}/secop/sincronizacion-automatica', 'SeguimientoSecopController@toggleAutomatic')->whereNumber('seguimiento')->name('seguimiento.secop.toggle-automatic');
+        Route::post('persona/{persona}/conciliacion-secop/vincular-exactos', 'PersonaSecopController@linkExact')->whereNumber('persona')->name('persona.secop.link-exact');
+        Route::post('persona/{persona}/conciliacion-secop/sincronizar', 'PersonaSecopController@sync')->whereNumber('persona')->name('persona.secop.sync');
+        Route::get('sincronizacion-secop', 'SecopSincronizacionController@index')->name('secop.sync.index');
+        Route::post('sincronizacion-secop/aplicar', 'SecopSincronizacionController@apply')->name('secop.sync.apply');
 
     });
 

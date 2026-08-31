@@ -14,6 +14,11 @@ class SecopVinculo extends Model
         return [
             'vinculado_at' => 'datetime',
             'ultima_consulta_at' => 'datetime',
+            'sincronizacion_automatica' => 'boolean',
+            'campos_excluidos' => 'array',
+            'origenes_campos' => 'array',
+            'ultima_aplicacion_at' => 'datetime',
+            'ultimo_resultado' => 'array',
         ];
     }
 
@@ -35,5 +40,10 @@ class SecopVinculo extends Model
     public function ultimaInstantanea()
     {
         return $this->hasOne(SecopInstantanea::class, 'vinculo_id')->latestOfMany('consultado_at');
+    }
+
+    public function actualizaciones()
+    {
+        return $this->hasMany(SecopActualizacionSeguimiento::class, 'vinculo_id');
     }
 }

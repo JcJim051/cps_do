@@ -1,0 +1,135 @@
+/*
+ * Densidad visual global de Integra.
+ * Mantiene los listados legibles mientras aprovecha el ancho disponible.
+ */
+
+.page-body > main.container-fluid {
+    --tblr-gutter-x: 1rem;
+    max-width: none;
+    padding-inline: .5rem;
+}
+
+.page-body > main.container-fluid > .container-fluid {
+    padding-inline: .25rem;
+}
+
+[bp-section="page-header"] {
+    padding-inline: .25rem;
+}
+
+[bp-section="crud-operation-list"] {
+    margin-inline: -.25rem;
+}
+
+[bp-section="crud-operation-list"] > [class*="col-"] {
+    padding-inline: .5rem;
+}
+
+.page-body main .table-responsive {
+    width: 100%;
+}
+
+.page-body main .table-responsive > table.table {
+    width: 100% !important;
+    margin-bottom: 0;
+    font-size: 9px;
+}
+
+.page-body main .table-responsive > table.table > thead > tr > th,
+.page-body main .table-responsive > table.table > tfoot > tr > th {
+    padding: .45rem .48rem;
+    font-size: 9px;
+    line-height: 1.18;
+    white-space: normal !important;
+    overflow-wrap: break-word;
+    vertical-align: middle;
+}
+
+.page-body main .table-responsive > table.table > tbody > tr > td {
+    padding: .4rem .48rem;
+    font-size: 9px;
+    line-height: 1.24;
+    vertical-align: middle;
+}
+
+/* Backpack agrega nowrap por defecto; Integra prioriza dos líneas visibles. */
+#crudTable,
+#crudTable th,
+#crudTable td,
+#crudTable td [style*="white-space"] {
+    white-space: normal !important;
+}
+
+#crudTable tbody td {
+    min-width: 68px;
+    overflow-wrap: break-word;
+}
+
+#crudTable tbody td:not(:last-child) > div:not(.dtr-control),
+#crudTable tbody td:not(:last-child) > span:not(.badge),
+#crudTable tbody td:not(:last-child) > a:not(.btn) {
+    display: block;
+    overflow: visible;
+    white-space: normal !important;
+    text-overflow: clip;
+}
+
+#crudTable tbody td .integra-person-name {
+    display: block;
+    width: 100%;
+    min-width: 170px;
+    max-width: 250px;
+    line-height: 1.22;
+    white-space: normal !important;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+/* El acceso a columnas ocultas acompaña al texto; no crea una fila adicional. */
+#crudTable.has-hidden-columns tbody td:first-child {
+    position: relative;
+    padding-left: 1.7rem;
+}
+
+#crudTable.has-hidden-columns tbody td:first-child > .dtr-control {
+    position: absolute;
+    top: 50%;
+    left: .42rem;
+    display: inline-block !important;
+    margin: 0 !important;
+    transform: translateY(-50%);
+}
+
+/* Neutraliza tamaños heredados por columnas antiguas. */
+#crudTable tbody td,
+#crudTable tbody td > :not(i):not(svg) {
+    font-size: 9px !important;
+}
+
+/* La columna de acciones conserva sus controles completos y compactos. */
+#crudTable thead th[data-action-column="true"],
+#crudTable tbody td:last-child {
+    width: 1%;
+    min-width: 86px;
+    white-space: nowrap !important;
+}
+
+#crudTable tbody td:last-child .btn {
+    padding: .25rem .42rem;
+    font-size: 9px;
+}
+
+#crudTable_wrapper .row,
+#crudTable_wrapper .table-footer {
+    --tblr-gutter-x: .75rem;
+}
+
+@media (max-width: 991.98px) {
+    .page-body > main.container-fluid {
+        padding-inline: .35rem;
+    }
+
+    .page-body main .table-responsive > table.table {
+        font-size: 9px;
+    }
+}

@@ -13,8 +13,12 @@ use Illuminate\Support\Facades\DB;
 
 class SecopVinculacionService
 {
-    public function __construct(private DatosAbiertosSecopService $secop)
-    {
+    public function __construct(
+        private DatosAbiertosSecopService $secop,
+        private SecopNormalizer $normalizer,
+        private SecopEntidadService $entidades,
+        private SecopAplicacionService $aplicacion,
+    ) {
     }
 
     public function candidatos(PrevalidacionContractual $record): array
@@ -37,6 +41,9 @@ class SecopVinculacionService
         $candidate = $this->secop->buscarCandidato($record->cedula_o_nit, $record->fuente->nit_entidad, $fuente, $identificador);
         if (!$candidate) {
             throw new \RuntimeException('El registro SECOP ya no está disponible entre los candidatos válidos.');
+        }
+        if (($candidate['tipo_registro'] ?? 'contrato') !== 'contrato') {
+            throw new \RuntimeException('El proceso SECOP es solo informativo; la vinculación requiere un contrato confirmado.');
         }
 
         try {
@@ -72,13 +79,10 @@ class SecopVinculacionService
 
     public function candidatosSeguimiento(Seguimiento $seguimiento): array
     {
-        $source = PrevalidacionFuente::query()->where('secretaria_id', $seguimiento->secretaria_id)->where('activa', true)->first();
-        if (!$source) {
-            throw new \RuntimeException('No hay una fuente activa con NIT configurado para esta secretaría.');
-        }
+        $nitEntidad = $this->entidades->nitParaSeguimiento($seguimiento);
         $used = SecopVinculo::query()->get(['fuente_secop', 'identificador_externo'])
             ->mapWithKeys(fn ($link) => [$link->fuente_secop.'|'.$link->identificador_externo => true]);
-        return collect($this->secop->consultarCandidatos($seguimiento->persona->cedula_o_nit, $source->nit_entidad))
+        return collect($this->secop->consultarCandidatos($seguimiento->persona->cedula_o_nit, $nitEntidad))
             ->map(function (array $candidate) use ($seguimiento, $used) {
                 $key = ($candidate['fuente_codigo'] ?? '').'|'.($candidate['identificador_externo'] ?? '');
                 $candidate['disponible'] = !isset($used[$key]);
@@ -89,10 +93,13 @@ class SecopVinculacionService
 
     public function vincularSeguimiento(Seguimiento $seguimiento, string $fuente, string $identificador, ?int $userId): SecopVinculo
     {
-        $source = PrevalidacionFuente::query()->where('secretaria_id', $seguimiento->secretaria_id)->where('activa', true)->firstOrFail();
-        $candidate = $this->secop->buscarCandidato($seguimiento->persona->cedula_o_nit, $source->nit_entidad, $fuente, $identificador);
+        $nitEntidad = $this->entidades->nitParaSeguimiento($seguimiento);
+        $candidate = $this->secop->buscarCandidato($seguimiento->persona->cedula_o_nit, $nitEntidad, $fuente, $identificador);
         if (!$candidate) {
             throw new \RuntimeException('El registro SECOP ya no está disponible entre los candidatos válidos.');
+        }
+        if (($candidate['tipo_registro'] ?? 'contrato') !== 'contrato') {
+            throw new \RuntimeException('El proceso SECOP es solo informativo; la vinculación requiere un contrato confirmado.');
         }
         try {
             return DB::transaction(function () use ($seguimiento, $candidate, $fuente, $identificador, $userId) {
@@ -109,6 +116,7 @@ class SecopVinculacionService
                     'vinculado_at' => now(), 'vinculado_por' => $userId, 'ultima_consulta_at' => now(),
                 ]);
                 $this->snapshot($link, $candidate);
+                $this->aplicacion->apply($link->fresh(['seguimiento', 'ultimaInstantanea']), 'vinculacion', $userId);
                 return $link;
             });
         } catch (QueryException $e) {
@@ -139,16 +147,22 @@ class SecopVinculacionService
             return false;
         }
         $document = $owner?->cedula_o_nit ?: $seguimiento?->persona?->cedula_o_nit;
-        $nit = $owner?->fuente?->nit_entidad ?: PrevalidacionFuente::query()
-            ->where('secretaria_id', $seguimiento?->secretaria_id)->where('activa', true)->value('nit_entidad');
-        if (!$document || !$nit) {
+        $nit = $owner?->fuente?->nit_entidad ?: ($seguimiento ? $this->entidades->nitParaSeguimiento($seguimiento) : null);
+        if (!$document) {
             return false;
         }
         $candidates = $this->secop->consultarCandidatos($document, $nit);
         $candidate = collect($candidates)->first(fn (array $row) =>
             ($row['fuente_codigo'] ?? '') === $link->fuente_secop
-            && (string) ($row['identificador_externo'] ?? '') === $link->identificador_externo
+            && ((string) ($row['identificador_externo'] ?? '') === $link->identificador_externo
+                || (string) ($row['identificador_legacy'] ?? '') === $link->identificador_externo)
         );
+
+        if ($candidate && $link->fuente_secop === 'secop1' && !empty($candidate['identificador_externo'])
+            && $link->identificador_externo !== $candidate['identificador_externo']
+            && !SecopVinculo::query()->where('fuente_secop', 'secop1')->where('identificador_externo', $candidate['identificador_externo'])->whereKeyNot($link->id)->exists()) {
+            $link->identificador_externo = $candidate['identificador_externo'];
+        }
 
         if ($link->tipo_registro === 'proceso') {
             $contract = collect($candidates)->first(fn (array $row) =>
@@ -179,14 +193,36 @@ class SecopVinculacionService
         return $this->snapshot($link, $candidate);
     }
 
+    public function sincronizar(SecopVinculo $link, string $mode = 'manual', ?int $userId = null, bool $dryRun = false): array
+    {
+        try {
+            $this->refrescar($link);
+            $result = $this->aplicacion->apply($link->fresh(['seguimiento', 'ultimaInstantanea']), $mode, $userId, $dryRun);
+            $link->forceFill(['ultimo_error' => null])->save();
+            return $result;
+        } catch (\Throwable $e) {
+            $link->forceFill(['ultimo_error' => mb_substr($e->getMessage(), 0, 2000)])->save();
+            throw $e;
+        }
+    }
+
     public function snapshot(SecopVinculo $link, array $data): bool
     {
+        [$duration, $unit, $durationDays] = $this->duration($data['duracion_inicial'] ?? null, $data['unidad_duracion'] ?? null, $data['fecha_inicio'] ?? null);
         $normalized = [
             'estado' => $data['estado'] ?? null,
             'fase' => $data['fase'] ?? null,
+            'numero_contrato' => $this->normalizedContractNumber($data['referencia_contrato'] ?? null, $data['fecha_firma'] ?? null),
             'fecha_firma' => $data['fecha_firma'] ?? null,
             'fecha_inicio' => $data['fecha_inicio'] ?? null,
             'fecha_fin' => $data['fecha_fin'] ?? null,
+            'duracion_inicial' => $duration,
+            'unidad_duracion' => $unit,
+            'duracion_inicial_dias' => $durationDays,
+            'dias_adicionados' => $this->integer($data['dias_adicionados'] ?? null),
+            'meses_adicionados' => $this->number($data['meses_adicionados'] ?? null),
+            'marcacion_adicion' => $this->boolean($data['marcacion_adicion'] ?? null),
+            'ultima_actualizacion_fuente' => $data['ultima_actualizacion_fuente'] ?? null,
             'valor_contrato' => $this->number($data['valor_contrato'] ?? null),
             'valor_adiciones' => $this->number($data['valor_adiciones'] ?? null),
             'valor_total' => $this->number($data['valor_total_con_adiciones'] ?? $data['valor_contrato'] ?? null),
@@ -236,14 +272,22 @@ class SecopVinculacionService
     private function scoreSeguimiento(Seguimiento $record, array $candidate): int
     {
         $score = ($candidate['tipo_registro'] ?? '') === 'contrato' ? 5 : 0;
-        if ($record->numero_contrato && str_contains(
-            mb_strtoupper((string) ($candidate['referencia_contrato'] ?? $candidate['referencia_proceso'] ?? '')),
-            mb_strtoupper($record->numero_contrato)
-        )) $score += 50;
-        if ($record->anio && str_starts_with((string) ($candidate['fecha_firma'] ?? $candidate['fecha_publicacion'] ?? ''), (string) $record->anio)) $score += 15;
+        $recordNumber = $this->normalizer->contrato($record->numero_contrato, $record->anio);
+        $candidateNumber = $this->normalizer->contrato(
+            $candidate['referencia_contrato'] ?? $candidate['referencia_proceso'] ?? '',
+            $candidate['fecha_firma'] ?? $candidate['fecha_publicacion'] ?? null,
+        );
+        if ($recordNumber['clave'] && $recordNumber['clave'] === $candidateNumber['clave']) {
+            $score += 50;
+        }
+        $nitEntidad = $this->entidades->nitParaSeguimiento($record);
+        if ($nitEntidad && $this->normalizer->nitCoincide($nitEntidad, $candidate['nit_entidad'] ?? null)) {
+            $score += 20;
+        }
+        if ($record->anio && str_starts_with((string) ($candidate['fecha_firma'] ?? $candidate['fecha_publicacion'] ?? ''), (string) $record->anio)) $score += 10;
         $planned = (float) ($record->valor_total_contrato ?: $record->valor_total);
         $observed = (float) ($candidate['valor_total_con_adiciones'] ?? 0);
-        if ($planned > 0 && $observed > 0 && abs($planned - $observed) / $planned <= .03) $score += 25;
+        if ($planned > 0 && $observed > 0 && abs($planned - $observed) / $planned <= .03) $score += 15;
         return min($score, 100);
     }
 
@@ -255,5 +299,43 @@ class SecopVinculacionService
     private function number(mixed $value): ?float
     {
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function integer(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) round((float) $value) : null;
+    }
+
+    private function boolean(mixed $value): ?bool
+    {
+        if ($value === null || $value === '') return null;
+        return in_array(mb_strtolower(trim((string) $value)), ['1', 'si', 'sí', 'true', 'x', 'con adiciones'], true);
+    }
+
+    private function duration(mixed $value, mixed $unit, ?string $start): array
+    {
+        $text = trim((string) $value);
+        $unitText = trim((string) $unit);
+        if ($text === '' && $unitText === '') return [null, null, null];
+        $number = is_numeric($value) ? (float) $value : null;
+        if ($number === null && preg_match('/([0-9]+(?:[.,][0-9]+)?)/', $text, $m)) $number = (float) str_replace(',', '.', $m[1]);
+        if ($number === null) return [null, $unitText ?: null, null];
+        $normalizedUnit = mb_strtolower($unitText.' '.$text);
+        if (str_contains($normalizedUnit, 'mes')) {
+            $days = $start ? \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($start)->addMonths((int) round($number))) : (int) round($number * 30);
+            return [$number, $unitText ?: 'Mes(es)', $days];
+        }
+        if (str_contains($normalizedUnit, 'año') || str_contains($normalizedUnit, 'ano')) {
+            $days = $start ? \Carbon\Carbon::parse($start)->diffInDays(\Carbon\Carbon::parse($start)->addYears((int) round($number))) : (int) round($number * 365);
+            return [$number, $unitText ?: 'Año(s)', $days];
+        }
+        return [$number, $unitText ?: 'Día(s)', (int) round($number)];
+    }
+
+    private function normalizedContractNumber(mixed $value, mixed $yearHint): ?string
+    {
+        $contract = $this->normalizer->contrato($value, $yearHint);
+        if ($contract['consecutivo'] && $contract['anio']) return $contract['consecutivo'].'-'.$contract['anio'];
+        return filled($value) ? trim((string) $value) : null;
     }
 }

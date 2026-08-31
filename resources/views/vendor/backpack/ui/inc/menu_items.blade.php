@@ -50,6 +50,7 @@
     <x-backpack::menu-dropdown-item title="Configurar Google Drive" icon="la la-google" :link="backpack_url('prevalidacion-google/configuracion')" />
 </x-backpack::menu-dropdown>
 <x-backpack::menu-item title="Consulta Datos Abiertos" icon="la la-search" :link="backpack_url('consulta-datos-abiertos')" />
+<x-backpack::menu-item title="Sincronización SECOP" icon="la la-sync" :link="backpack_url('sincronizacion-secop')" />
 @endif
 
 

@@ -30,6 +30,7 @@
             'fecha_finalizacion' => 'date',
             'fecha_acta_inicio_adicion' => 'date',
             'fecha_finalizacion_adicion' => 'date',
+            'ultima_actualizacion_secop' => 'datetime',
         ];
         protected $fillable = [
             'persona_id',
@@ -47,6 +48,8 @@
             'valor_mensual',
             'valor_total',
             'estado_contrato_id',
+            'estado_secop',
+            'ultima_actualizacion_secop',
             'aut_despacho',
             'aut_planeacion',
             'aut_administrativa',
@@ -63,7 +66,10 @@
             'fecha_acta_inicio_adicion',
             'fecha_finalizacion_adicion',
             'tiempo_ejecucion_dias_adicion',
+            'tiempo_extension_secop_dias',
+            'tiempo_suspension_dias',
             'tiempo_total_ejecucion_dias',
+            'tiempo_total_calendario_dias',
             'valor_adicion',
             'valor_total_contrato',
             'evaluacion_id',
@@ -75,17 +81,24 @@
         ];
     
         protected bool $skipAutoCalculation = false;
+        protected bool $skipSecopExclusions = false;
 
         public function skipAutoCalculation(bool $value = true): self
         {
             $this->skipAutoCalculation = $value;
             return $this;
         }
+
+        public function skipSecopExclusions(bool $value = true): self
+        {
+            $this->skipSecopExclusions = $value;
+            return $this;
+        }
     
         protected static function booted()
         {
             static::saving(function ($seguimiento) {
-                if ($seguimiento->tipo === 'contrato' && $seguimiento->estado_contrato_id) {
+                if (!$seguimiento->skipAutoCalculation && $seguimiento->tipo === 'contrato' && $seguimiento->estado_contrato_id) {
                     $estado = Estados::query()->find($seguimiento->estado_contrato_id)?->nombre;
                     $estado = mb_strtoupper(trim((string) $estado));
 
@@ -154,6 +167,21 @@
                     (float) ($seguimiento->valor_total ?? 0) +
                     (float) ($seguimiento->valor_adicion ?? 0);
             });
+
+            static::saved(function ($seguimiento) {
+                if ($seguimiento->skipSecopExclusions) return;
+                $link = $seguimiento->vinculoSecop()->first();
+                if (!$link) return;
+                $dirty = array_values(array_intersect(
+                    array_keys($seguimiento->getChanges()),
+                    \App\Services\SecopAplicacionService::MANAGED_FIELDS,
+                ));
+                if ($dirty === []) return;
+                $excluded = array_values(array_unique(array_merge($link->campos_excluidos ?? [], $dirty)));
+                $origins = $link->origenes_campos ?? [];
+                foreach ($dirty as $field) $origins[$field] = 'Manual';
+                $link->forceFill(['campos_excluidos' => $excluded, 'origenes_campos' => $origins])->save();
+            });
         }
     
 
@@ -204,6 +232,11 @@
         public function prevalidacionOrigen()
         {
             return $this->hasOne(PrevalidacionContractual::class, 'seguimiento_id');
+        }
+
+        public function actualizacionesSecop()
+        {
+            return $this->hasMany(SecopActualizacionSeguimiento::class, 'seguimiento_id');
         }
         
     }

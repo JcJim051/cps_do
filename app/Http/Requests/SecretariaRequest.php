@@ -25,7 +25,10 @@ class SecretariaRequest extends FormRequest
     public function rules()
     {
         return [
-            // 'name' => 'required|min:5|max:255'
+            'nombre' => ['required', 'string', 'max:255'],
+            'convencion' => ['required', 'string', 'max:255'],
+            'nit_secop' => ['nullable', 'string', 'max:30'],
+            'nombre_secop' => ['nullable', 'string', 'max:255'],
         ];
     }
 

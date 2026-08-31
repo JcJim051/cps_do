@@ -12,6 +12,7 @@ use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use App\Exports\PeopleTemplateExport;
 use App\Services\DatosAbiertosSecopService;
+use App\Services\SecopConciliacionService;
 use Illuminate\Http\Request;
 use App\Imports\PeopleImport;
 use Illuminate\Support\Facades\Cache;
@@ -24,8 +25,10 @@ class PersonaCrudController extends CrudController
     use \Backpack\CRUD\app\Http\Controllers\Operations\DeleteOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
 
-    public function __construct(private DatosAbiertosSecopService $datosAbiertosSecopService)
-    {
+    public function __construct(
+        private DatosAbiertosSecopService $datosAbiertosSecopService,
+        private SecopConciliacionService $secopConciliacionService,
+    ) {
         parent::__construct();
     }
 
@@ -635,94 +638,11 @@ class PersonaCrudController extends CrudController
                 'label'    => 'Información de la Persona',
                 'type'     => 'closure',
                 'function' => function ($entry) {
-                    $html = '<div class="persona-section" data-section="datos_persona">';
-                    $html .= '<div class="row">'; // Row principal
-    
-                    // --- 1. FOTO: Ocupa la primera columna (col-md-3) ---
-                    if ($entry->foto) {
-                        $fotoUrl = asset('storage/'.$entry->foto);
-                        // CLASES CLAVE: h-100 en card y card-body para que se estiren verticalmente.
-                        $html .= '
-                            <div class="mb-2 col-md-3 d-flex align-items-stretch">
-                                <div class="border-0 shadow-sm w-100 h-100 card">
-                                    <div class="px-3 py-2 text-center card-body h-100 d-flex flex-column justify-content-center">
-                                        <small class="text-muted">Foto</small><br>
-                                        <a href="'.$fotoUrl.'" target="_blank" class="mt-2 w-100 h-100 d-block">
-                                            <img src="'.$fotoUrl.'" alt="Foto" class="rounded img-fluid w-100 h-100" style="object-fit: contain; cursor:pointer;">
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>';
-                    }
-    
-                    // 2. CONTENEDOR DE DATOS: Ocupa las columnas restantes (col-md-9)
-                    $html .= '<div class="col-md-9">';
-                    $html .= '<div class="row">'; // Nueva fila interna para el flujo de 3 columnas
-    
-                    // Definición de los campos principales
-                    $campos = [
-                        'Nombre' => $entry->nombre_contratista,
-                        'Cédula/NIT' => $entry->cedula_o_nit,
-                        'Celular' => $entry->celular,
-                        'Género' => $entry->genero,
-                        // 'Vinculacion' => $entry->tipo?->nombre, 
-                        // 'Estado de la Persona' => $entry->estadoPersona?->nombre, 
-                        'Nivel Académico' => $entry->nivelAcademico?->nombre,
-                        'Profesión/Técnico/Tecnólogo' => $entry->tecnico_tecnologo_profesion,
-                        'Especialización' => $entry->especializacion,
-                        'Maestría' => $entry->maestria,
-                        // 'Secretaría' => $entry->secretaria?->nombre, 
-                        // 'Gerencia' => $entry->gerencia?->nombre, 
-                        'Caso especial' => $entry->caso?->nombre, 
-                        
-                    ];
-    
-                    // Manejo de REFERENCIAS MÚLTIPLES (Many-to-Many)
-                    if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
-                        $referenciasNombres = $entry->referencias->pluck('nombre')->implode('<br>');
-                        $campos['Referencia(s)'] = $referenciasNombres 
-                            ? '<div class="fw-bold">'.$referenciasNombres.'</div>'
-                            : null;
-                    }
-                    if (backpack_user()->hasAnyRole(['admin', 'diana'])) {
-                        $campos['Referencia 2'] = $entry->referencia_2;
-                    }
-                    // Generación de las tarjetas (todas usan col-md-4 para flujo de 3 columnas en el col-md-9)
-                    foreach ($campos as $label => $valor) {
-                        $valorDisplay = $valor;
-    
-                        // Renderizar la tarjeta (col-md-4)
-                        $html .= '
-                            <div class="mb-2 col-md-4">
-                                <div class="border-0 shadow-sm card">
-                                    <div class="px-3 py-2 card-body">
-                                        <small class="text-muted">'.$label.'</small>
-                                        <div class="fw-semibold">'.($valorDisplay ?? '<span class="text-muted">N/A</span>').'</div>
-                                    </div>
-                                </div>
-                            </div>';
-                    }
-    
-                    // PDF (también usa col-md-4)
-                    if ($entry->documento_pdf) {
-                        $pdfUrl = asset('storage/'.$entry->documento_pdf);
-                        $html .= '
-                            <div class="mb-2 col-md-4">
-                                <div class="border-0 shadow-sm card">
-                                    <div class="px-3 py-2 text-center card-body">
-                                        <small class="text-muted">Documento PDF</small><br>
-                                        <a href="'.$pdfUrl.'" target="_blank" class="mt-2 btn btn-outline-primary btn-sm">Ver PDF</a>
-                                    </div>
-                                </div>
-                            </div>';
-                    }
-    
-                    $html .= '</div>'; // Cierra la fila interna (row)
-                    $html .= '</div>'; // Cierra el contenedor col-md-9
-    
-                    $html .= '</div>'; // Cierra el row principal
-                    $html .= '</div>'; // Cierra persona-section
-                    return $html;
+                    $entry->loadMissing([
+                        'referencias', 'nivelAcademico', 'caso',
+                        'seguimientos.estadoContrato', 'seguimientos.secretaria', 'seguimientos.vinculoSecop',
+                    ]);
+                    return view('admin.persona.profile_overview', compact('entry'))->render();
                 },
                 'escaped' => false,
             ]);
@@ -786,8 +706,8 @@ class PersonaCrudController extends CrudController
 
                     $collapseId = 'trazabilidad-'.$entry->id;
                     $html = '<div class="persona-section" data-section="trazabilidad">';
-                    $html .= '<div class="card mt-3">';
-                    $html .= '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">';
+                    $html .= '<div class="card mt-3 persona-tone-card">';
+                    $html .= '<div class="card-header persona-tone-header d-flex justify-content-between align-items-center">';
                     $html .= '<span>Campañas y Equipos</span>';
                     $html .= '<button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>';
                     $html .= '</div>';
@@ -837,8 +757,8 @@ class PersonaCrudController extends CrudController
         
                     $collapseId = 'seguimientos-cto-'.$entry->id;
                     $html = '<div class="persona-section" data-section="seguimientos_cto">';
-                    $html .= '<div class="mt-4 card">
-                                <div class="text-white card-header bg-primary d-flex justify-content-between align-items-center">
+                    $html .= '<div class="mt-4 card persona-tone-card">
+                                <div class="card-header persona-tone-header persona-tone-header--success d-flex justify-content-between align-items-center">
                                     <span>Seguimientos</span>
                                     <button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>
                                 </div>
@@ -910,6 +830,22 @@ class PersonaCrudController extends CrudController
             ]);
 
             $this->crud->addColumn([
+                'name' => 'conciliacion_secop',
+                'label' => 'Conciliación SECOP',
+                'type' => 'closure',
+                'function' => function ($entry) {
+                    try {
+                        $resultado = $this->secopConciliacionService->conciliarPersona($entry);
+                        return view('admin.persona.secop_conciliacion', compact('resultado'))->render();
+                    } catch (\Throwable $e) {
+                        \Log::warning('No se pudo simular la conciliación SECOP de la persona '.$entry->id.': '.$e->getMessage());
+                        return '<div class="alert alert-warning">No fue posible consultar la conciliación SECOP. Intenta nuevamente en unos minutos.</div>';
+                    }
+                },
+                'escaped' => false,
+            ]);
+
+            $this->crud->addColumn([
                 'name'     => 'seguimientos_nom',
                 'label'    => 'Seguimientos Nom',
                 'type'     => 'closure',
@@ -920,8 +856,8 @@ class PersonaCrudController extends CrudController
 
                     $collapseId = 'seguimientos-nom-'.$entry->id;
                     $html = '<div class="persona-section" data-section="seguimientos_nom">';
-                    $html .= '<div class="mt-4 card">
-                                <div class="text-white card-header bg-primary d-flex justify-content-between align-items-center">
+                    $html .= '<div class="mt-4 card persona-tone-card">
+                                <div class="card-header persona-tone-header persona-tone-header--warning d-flex justify-content-between align-items-center">
                                     <span>Seguimientos Nom</span>
                                     <button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>
                                 </div>
@@ -1007,8 +943,8 @@ class PersonaCrudController extends CrudController
 
                     $collapseId = 'datos-abiertos-'.$entry->id;
                     $html = '<div class="persona-section" data-section="datos_abiertos">';
-                    $html .= '<div class="card mt-3">';
-                    $html .= '<div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">';
+                    $html .= '<div class="card mt-3 persona-tone-card">';
+                    $html .= '<div class="card-header persona-tone-header persona-tone-header--purple d-flex justify-content-between align-items-center">';
                     $html .= '<span>Datos abiertos</span>';
                     $html .= '<button class="btn btn-sm btn-outline-light border-0" type="button" data-bs-toggle="collapse" data-bs-target="#'.$collapseId.'" aria-expanded="false">Ver</button>';
                     $html .= '</div>';

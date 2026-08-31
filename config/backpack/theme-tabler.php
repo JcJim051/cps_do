@@ -41,6 +41,7 @@ return [
     'styles' => [
         base_path('vendor/backpack/theme-tabler/resources/assets/css/color-adjustments.css'),
         base_path('vendor/backpack/theme-tabler/resources/assets/css/colors.css'),
+        base_path('resources/css/integra-admin.css'),
     ],
 
     /**
@@ -80,7 +81,7 @@ return [
         /**
          * When true, the content area will take the whole screen width.
          */
-        'useFluidContainers' => false,
+        'useFluidContainers' => true,
 
         /**
          * When true, the sidebar content for vertical layouts will not scroll with the rest of the content.
@@ -153,12 +154,12 @@ return [
          * Use this to pass classes to the table displayed in List Operation
          * It defaults to: "table table-striped table-hover nowrap rounded card-table table-vcenter card-table shadow-xs border-xs"
          */
-        'table' => null,
+        'table' => 'table table-striped table-hover rounded card-table table-vcenter shadow-xs border-xs',
 
         /**
          * Use this to pass classes to the table wrapper component displayed in List Operation
          */
-        'tableWrapper' => null,
+        'tableWrapper' => 'table-responsive',
     ],
 
     /**
