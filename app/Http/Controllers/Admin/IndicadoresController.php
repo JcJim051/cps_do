@@ -3,288 +3,44 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Persona;
-use App\Models\Seguimiento;
-use App\Models\EjercicioPolitico;
-use App\Models\EquipoCampania;
-use Illuminate\Support\Facades\DB;
+use App\Models\SecopConciliacionLote;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Backpack\CRUD\app\Library\Widget;
+use Illuminate\Support\Facades\DB;
 
 class IndicadoresController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $year = now()->year;
-        $cacheTtl = 600; // 10 min
+        $years = DB::table('seguimientos')
+            ->where('tipo', 'contrato')
+            ->whereNotNull('anio')
+            ->distinct()
+            ->orderByDesc('anio')
+            ->pluck('anio')
+            ->map(fn ($year) => (int) $year)
+            ->values();
 
-        // === A. INDICADORES DE PERSONAS ===
-        $totalPersonas = Cache::remember("indicadores.total_personas", $cacheTtl, function () {
-            return Persona::count();
-        });
+        $defaultYear = $years->contains((int) now()->year) ? (int) now()->year : ($years->first() ?: (int) now()->year);
+        $year = (int) $request->integer('anio', $defaultYear);
+        if (!$years->contains($year)) {
+            $year = $defaultYear;
+        }
 
-        $personasConContrato = Cache::remember("indicadores.personas_contrato_activo", $cacheTtl, function () {
-            return Persona::whereHas('seguimientos', function ($q) {
-                $q->where('estado_contrato_id', 1); // 1 = activo
-            })->count();
-        });
+        $cacheKey = "indicadores.ejecutivo.v3.{$year}";
+        if ($request->boolean('actualizar')) {
+            Cache::forget($cacheKey);
+        }
 
-        $personasSinSeguimiento = Cache::remember("indicadores.personas_sin_seguimiento", $cacheTtl, function () {
-            return Persona::doesntHave('seguimientos')->count();
-        });
+        $dashboard = Cache::remember($cacheKey, 600, fn () => $this->buildDashboard($year));
+        $conciliationRun = SecopConciliacionLote::query()->where('anio', $year)->latest('id')->first();
 
-        $porNivelAcademico = Cache::remember("indicadores.personas_nivel_academico", $cacheTtl, function () {
-            return Persona::select('nivel_academico_id', DB::raw('COUNT(*) as total'))
-                ->groupBy('nivel_academico_id')
-                ->with('nivelAcademico')
-                ->get();
-        });
-
-        $porReferencia = Cache::remember("indicadores.personas_por_referencia", $cacheTtl, function () {
-            return DB::table('persona_referencia')
-                ->select('referencia_id', DB::raw('COUNT(persona_id) as total'))
-                ->groupBy('referencia_id')
-                ->get();
-        });
-
-        $generoStats = Cache::remember("indicadores.personas_genero", $cacheTtl, function () {
-            return Persona::select('genero', DB::raw('COUNT(*) as total'))
-                ->groupBy('genero')
-                ->get();
-        });
-        $totalGenero = $generoStats->sum('total');
-        $hombres = (int)($generoStats->firstWhere('genero', 'Masculino')->total ?? 0);
-        $mujeres = (int)($generoStats->firstWhere('genero', 'Femenino')->total ?? 0);
-        $porcHombres = $totalGenero ? round($hombres / $totalGenero * 100, 1) : 0;
-        $porcMujeres = $totalGenero ? round($mujeres / $totalGenero * 100, 1) : 0;
-
-        // === B. CONTRATOS / SEGUIMIENTOS ===
-        $valorPorSecretaria = Cache::remember("indicadores.valor_secretaria_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::select('secretaria_id', DB::raw('SUM(valor_total_contrato) as total'))
-                ->where('anio', $year)
-                ->groupBy('secretaria_id')
-                ->with('secretaria')
-                ->get();
-        });
-
-        $contratosActivos = Cache::remember("indicadores.contratos_activos_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('estado_contrato_id', 1)
-                ->where('anio', $year)
-                ->count();
-        });
-        $contratosFinalizados = Cache::remember("indicadores.contratos_finalizados_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('estado_contrato_id', 2)
-                ->where('anio', $year)
-                ->count();
-        });
-        $conAdicion = Cache::remember("indicadores.contratos_con_adicion_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('adicion', 'SI')
-                ->where('anio', $year)
-                ->count();
-        });
-        $totalContratos = Cache::remember("indicadores.contratos_total_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('anio', $year)->count();
-        });
-
-        $tiempoPromedioEjecucion = Cache::remember("indicadores.tiempo_promedio_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('anio', $year)->avg('tiempo_total_ejecucion_dias');
-        });
-
-        $demoras = Cache::remember("indicadores.demoras_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('anio', $year)
-                ->whereNotNull('fecha_aut_despacho')
-                ->whereNotNull('fecha_aut_planeacion')
-                ->whereNotNull('fecha_aut_administrativa')
-                ->whereNotNull('fecha_acta_inicio')
-                ->select(
-                    DB::raw('AVG(DATEDIFF(fecha_aut_planeacion, fecha_aut_despacho)) as despacho_planeacion'),
-                    DB::raw('AVG(DATEDIFF(fecha_aut_administrativa, fecha_aut_planeacion)) as planeacion_admin'),
-                    DB::raw('AVG(DATEDIFF(fecha_acta_inicio, fecha_aut_administrativa)) as admin_inicio')
-                )->first();
-        });
-
-        // === C. EFICIENCIA GLOBAL ===
-        $contratosConDemora = Cache::remember("indicadores.contratos_demora_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('anio', $year)
-                ->whereNotNull('fecha_acta_inicio')
-                ->whereNotNull('fecha_aut_despacho')
-                ->whereRaw('DATEDIFF(fecha_acta_inicio, fecha_aut_despacho) > 30')
-                ->count();
-        });
-        $porcDemora = $totalContratos ? round($contratosConDemora / $totalContratos * 100, 1) : 0;
-        $porcAdicion = $totalContratos ? round($conAdicion / $totalContratos * 100, 1) : 0;
-
-        $tiempoCicloAprobacion = Cache::remember("indicadores.ciclo_aprobacion_$year", $cacheTtl, function () use ($year) {
-            return Seguimiento::where('anio', $year)
-                ->whereNotNull('fecha_aut_despacho')
-                ->whereNotNull('fecha_acta_inicio')
-                ->avg(DB::raw('DATEDIFF(fecha_acta_inicio, fecha_aut_despacho)'));
-        });
-
-        // === D. EJERCICIOS POLÍTICOS ===
-        $campaniasTotal = Cache::remember("indicadores.campanias_total", $cacheTtl, function () {
-            return EjercicioPolitico::count();
-        });
-
-        $equiposTotal = Cache::remember("indicadores.equipos_total", $cacheTtl, function () {
-            return EquipoCampania::count();
-        });
-
-        $personasEnEquipos = Cache::remember("indicadores.personas_en_equipos", $cacheTtl, function () {
-            return (int) DB::table('equipo_campania_persona')
-                ->distinct('persona_id')
-                ->count('persona_id');
-        });
-
-        $personasSinEquipo = Cache::remember("indicadores.personas_sin_equipo", $cacheTtl, function () {
-            return Persona::whereNotIn('id', function ($q) {
-                $q->select('persona_id')->from('equipo_campania_persona');
-            })->count();
-        });
-
-        // === Tarjetas principales (widgets) ===
-        Widget::add()->type('div')->class('row')->content([
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $totalPersonas,
-                'description' => 'Total Personas',
-                'progress' => 100,
-                'hint' => round(($personasConContrato / max($totalPersonas,1)) * 100, 1) . '% con contrato',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $totalContratos,
-                'description' => 'Total Contratos',
-                'progress' => 100,
-                'hint' => "{$conAdicion} con adición ({$porcAdicion}%)",
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => number_format($valorPorSecretaria->sum('total'), 0, ',', '.'),
-                'description' => 'Valor Total Contratado (YTD)',
-                'progress' => 100,
-                'hint' => 'Año ' . $year,
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => round($tiempoPromedioEjecucion, 1) . ' días',
-                'description' => 'Tiempo promedio ejecución',
-                'progress' => 100,
-                'hint' => "{$porcDemora}% demoran > 30 días",
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $hombres,
-                'description' => 'Hombres',
-                'progress' => 100,
-                'hint' => $porcHombres . '%',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $mujeres,
-                'description' => 'Mujeres',
-                'progress' => 100,
-                'hint' => $porcMujeres . '%',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $contratosConDemora,
-                'description' => 'Contratos con demora > 30 días',
-                'progress' => 100,
-                'hint' => 'Año ' . $year,
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => round((float)$tiempoCicloAprobacion, 1) . ' días',
-                'description' => 'Ciclo aprobación → acta inicio',
-                'progress' => 100,
-                'hint' => 'Promedio anual',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $campaniasTotal,
-                'description' => 'Campañas activas',
-                'progress' => 100,
-                'hint' => 'Total campañas',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $equiposTotal,
-                'description' => 'Equipos registrados',
-                'progress' => 100,
-                'hint' => 'Total equipos',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $personasEnEquipos,
-                'description' => 'Personas en equipos',
-                'progress' => 100,
-                'hint' => 'Asignadas a grupos',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-            Widget::make([
-                'type'  => 'progress',
-                'value' => $personasSinEquipo,
-                'description' => 'Personas sin equipo',
-                'progress' => 100,
-                'hint' => 'Sin grupo asignado',
-                'wrapper' => ['class' => 'col-12 col-md-3 mb-3'],
-            ]),
-        ]);
-
-        // === Gráficos (widgets) ===
-        Widget::add()->type('div')->class('row')->content([
-            Widget::make([
-                'type' => 'chart',
-                'controller' => \App\Http\Controllers\Admin\Charts\PersonasNivelChartController::class,
-                'wrapper' => ['class' => 'col-12 col-md-4 mb-3'],
-                'title' => 'Personas por Nivel Académico', // ✅ título
-            ]),
-            Widget::make([
-                'type' => 'chart',
-                'controller' => \App\Http\Controllers\Admin\Charts\DemoraSecretariaChartController::class,
-                'wrapper' => ['class' => 'col-12 col-md-4 mb-3'],
-                'title' => 'Demora Promedio (Despacho → Acta Inicio)',
-            ]),
-            Widget::make([
-                'type' => 'chart',
-                'controller' => \App\Http\Controllers\Admin\Charts\PersonasCasosChartController::class,
-                'wrapper' => ['class' => 'col-12 col-md-4 mb-3'],
-                'title' => 'Casos Especiales (Personas)',
-            ]),
-            Widget::make([
-                'type' => 'chart',
-                'controller' => \App\Http\Controllers\Admin\Charts\EquiposPorCampaniaChartController::class,
-                'wrapper' => ['class' => 'col-12 col-md-4 mb-3'],
-                'title' => 'Equipos por Campaña',
-            ]),
-            Widget::make([
-                'type' => 'chart',
-                'controller' => \App\Http\Controllers\Admin\Charts\PersonasPorCampaniaChartController::class,
-                'wrapper' => ['class' => 'col-12 col-md-4 mb-3'],
-                'title' => 'Personas por Campaña',
-            ]),
-            Widget::make([
-                'type' => 'card',
-                'wrapper' => ['class' => 'col-12 mb-3'],
-                'content' => [
-                    'body' => $this->renderAutorizacionesPorDiaTable($year),
-                ],
-            ]),
-        ]);
-
-        return view(backpack_view('blank'), [
-            'title' => '📊 Indicadores Generales',
+        return view('admin.indicadores.index', [
+            'dashboard' => $dashboard,
+            'year' => $year,
+            'years' => $years,
+            'conciliationRun' => $conciliationRun,
+            'title' => 'Indicadores ejecutivos',
             'breadcrumbs' => [
                 trans('backpack::crud.admin') => backpack_url('dashboard'),
                 'Indicadores' => false,
@@ -292,125 +48,113 @@ class IndicadoresController extends Controller
         ]);
     }
 
-    private function renderAutorizacionesPorDiaTable(int $year): string
+    private function buildDashboard(int $year): array
     {
-        $base = Seguimiento::query()
-            ->where('tipo', 'contrato')
-            ->where('anio', $year);
+        $contracts = DB::table('seguimientos as s')
+            ->leftJoin('estados as e', 'e.id', '=', 's.estado_contrato_id')
+            ->where('s.tipo', 'contrato')
+            ->where('s.anio', $year);
 
-        $rowsInicial = $this->buildDailyRows(clone $base, false);
-        $rowsAdicion = $this->buildDailyRows((clone $base)->where('adicion', 'SI'), true);
+        $summary = (clone $contracts)->selectRaw(implode(', ', [
+            'COUNT(*) as total',
+            'COUNT(DISTINCT s.persona_id) as personas',
+            'SUM(COALESCE(NULLIF(s.valor_total_contrato, 0), s.valor_total, 0)) as valor_total',
+            "SUM(CASE WHEN UPPER(TRIM(COALESCE(e.nombre,''))) = 'CONTRATADO' THEN 1 ELSE 0 END) as contratados",
+            "SUM(CASE WHEN UPPER(TRIM(COALESCE(e.nombre,''))) = 'LIQUIDADO' THEN 1 ELSE 0 END) as liquidados",
+            "SUM(CASE WHEN UPPER(TRIM(COALESCE(e.nombre,''))) = 'SUSPENDIDO' THEN 1 ELSE 0 END) as suspendidos",
+            "SUM(CASE WHEN UPPER(TRIM(COALESCE(e.nombre,''))) IN ('APROBADO','PENDIENTE APROBACIÓN','VALIDACION HV') THEN 1 ELSE 0 END) as por_gestionar",
+            "SUM(CASE WHEN UPPER(TRIM(COALESCE(s.adicion,''))) = 'SI' OR COALESCE(s.valor_adicion,0) > 0 OR COALESCE(s.tiempo_ejecucion_dias_adicion,0) > 0 THEN 1 ELSE 0 END) as con_adicion",
+            'SUM(COALESCE(s.valor_adicion, 0)) as valor_adiciones',
+            'AVG(NULLIF(COALESCE(s.tiempo_total_calendario_dias, s.tiempo_total_ejecucion_dias, s.tiempo_ejecucion_dias), 0)) as duracion_promedio',
+            "SUM(CASE WHEN s.numero_contrato IS NULL OR TRIM(s.numero_contrato) = '' THEN 1 ELSE 0 END) as sin_numero",
+            'SUM(CASE WHEN s.fecha_acta_inicio IS NULL OR s.fecha_finalizacion IS NULL THEN 1 ELSE 0 END) as sin_fechas',
+            'SUM(CASE WHEN s.valor_total_contrato IS NULL AND s.valor_total IS NULL THEN 1 ELSE 0 END) as sin_valor',
+            'SUM(CASE WHEN s.fecha_finalizacion BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as vencen_30',
+            "SUM(CASE WHEN s.fecha_finalizacion < CURDATE() AND UPPER(TRIM(COALESCE(e.nombre,''))) NOT IN ('LIQUIDADO','CANCELADO') THEN 1 ELSE 0 END) as vencidos_sin_cierre",
+        ]))->first();
 
-        $renderRows = function (array $rows): string {
-            if (empty($rows)) {
-                return '<tr><td colspan="5" class="text-center text-muted">Sin movimientos</td></tr>';
-            }
+        $linked = DB::table('secop_vinculos as v')
+            ->join('seguimientos as s', 's.id', '=', 'v.seguimiento_id')
+            ->where('s.tipo', 'contrato')->where('s.anio', $year)
+            ->selectRaw('COUNT(*) as total, SUM(CASE WHEN v.ultimo_error IS NOT NULL THEN 1 ELSE 0 END) as errores, SUM(CASE WHEN v.sincronizacion_automatica = 1 THEN 1 ELSE 0 END) as automaticos')
+            ->first();
 
-            $html = '';
-            foreach ($rows as $row) {
-                $html .= '<tr>';
-                $html .= '<td>'.e($row['fecha']).'</td>';
-                $html .= '<td class="text-center">'.e((string) $row['aut1']).'</td>';
-                $html .= '<td class="text-center">'.e((string) $row['aut2']).'</td>';
-                $html .= '<td class="text-center">'.e((string) $row['aut3']).'</td>';
-                $html .= '<td class="text-center fw-bold">'.e((string) $row['total']).'</td>';
-                $html .= '</tr>';
-            }
-            return $html;
-        };
+        $authorizations = DB::table('seguimientos')
+            ->where('tipo', 'contrato')->where('anio', $year)
+            ->selectRaw('SUM(aut_despacho = 1) as aut1, SUM(aut_planeacion = 1) as aut2, SUM(aut_administrativa = 1) as aut3, SUM(fecha_acta_inicio IS NOT NULL) as iniciados')
+            ->first();
 
-        return '
-            <h5 class="mb-2">Autorizaciones por dia (Ano '.$year.')</h5>
-            <p class="mb-3 text-muted">Conteo diario de contratos/adiciones autorizados por cada paso.</p>
-            <div class="row">
-                <div class="mb-3 col-12 col-xl-6 mb-xl-0">
-                    <h6 class="mb-2">Inicial</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th class="text-center">Aut 1</th>
-                                    <th class="text-center">Aut 2</th>
-                                    <th class="text-center">Aut 3</th>
-                                    <th class="text-center">Total dia</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                '.$renderRows($rowsInicial).'
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="col-12 col-xl-6">
-                    <h6 class="mb-2">Adicion</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th class="text-center">Aut 1</th>
-                                    <th class="text-center">Aut 2</th>
-                                    <th class="text-center">Aut 3</th>
-                                    <th class="text-center">Total dia</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                '.$renderRows($rowsAdicion).'
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        ';
-    }
+        $states = (clone $contracts)
+            ->selectRaw("COALESCE(NULLIF(TRIM(e.nombre), ''), 'SIN ESTADO') as nombre, COUNT(*) as total")
+            ->groupBy('e.nombre')->orderByDesc('total')->get();
 
-    private function buildDailyRows($baseQuery, bool $isAdicion): array
-    {
-        $fAut1 = $isAdicion ? 'fecha_aut_despacho_adicion' : 'fecha_aut_despacho';
-        $fAut2 = $isAdicion ? 'fecha_aut_planeacion_adicion' : 'fecha_aut_planeacion';
-        $fAut3 = $isAdicion ? 'fecha_aut_administrativa_adicion' : 'fecha_aut_administrativa';
+        $secretarias = DB::table('seguimientos as s')
+            ->leftJoin('secretarias as sec', 'sec.id', '=', 's.secretaria_id')
+            ->leftJoin('secop_vinculos as v', 'v.seguimiento_id', '=', 's.id')
+            ->where('s.tipo', 'contrato')->where('s.anio', $year)
+            ->selectRaw(implode(', ', [
+                "COALESCE(NULLIF(TRIM(sec.nombre), ''), 'Sin secretaría') as nombre",
+                'COUNT(*) as contratos',
+                'COUNT(DISTINCT s.persona_id) as personas',
+                'SUM(COALESCE(NULLIF(s.valor_total_contrato, 0), s.valor_total, 0)) as valor',
+                'SUM(CASE WHEN v.id IS NOT NULL THEN 1 ELSE 0 END) as vinculados',
+                "SUM(CASE WHEN UPPER(TRIM(COALESCE(s.adicion,''))) = 'SI' OR COALESCE(s.valor_adicion,0) > 0 THEN 1 ELSE 0 END) as adiciones",
+                'AVG(NULLIF(COALESCE(s.tiempo_total_calendario_dias, s.tiempo_total_ejecucion_dias, s.tiempo_ejecucion_dias), 0)) as dias_promedio',
+            ]))
+            ->groupBy('s.secretaria_id', 'sec.nombre')
+            ->orderByDesc('valor')->limit(12)->get();
 
-        $aut1 = (clone $baseQuery)
-            ->whereNotNull($fAut1)
-            ->selectRaw("{$fAut1} as fecha, COUNT(*) as total")
-            ->groupBy($fAut1)
-            ->pluck('total', 'fecha');
+        $monthlyRaw = DB::table('seguimientos')
+            ->where('tipo', 'contrato')->where('anio', $year)->whereNotNull('fecha_acta_inicio')
+            ->selectRaw('MONTH(fecha_acta_inicio) as mes, COUNT(*) as contratos, SUM(COALESCE(NULLIF(valor_total_contrato,0), valor_total,0)) as valor')
+            ->groupByRaw('MONTH(fecha_acta_inicio)')->get()->keyBy('mes');
+        $monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        $monthly = collect(range(1, 12))->map(fn ($month) => [
+            'mes' => $monthNames[$month - 1],
+            'contratos' => (int) ($monthlyRaw[$month]->contratos ?? 0),
+            'valor' => (float) ($monthlyRaw[$month]->valor ?? 0),
+        ]);
 
-        $aut2 = (clone $baseQuery)
-            ->whereNotNull($fAut2)
-            ->selectRaw("{$fAut2} as fecha, COUNT(*) as total")
-            ->groupBy($fAut2)
-            ->pluck('total', 'fecha');
+        $previous = DB::table('seguimientos')
+            ->where('tipo', 'contrato')->where('anio', $year - 1)
+            ->selectRaw('COUNT(*) as total, SUM(COALESCE(NULLIF(valor_total_contrato,0), valor_total,0)) as valor_total')
+            ->first();
 
-        $aut3 = (clone $baseQuery)
-            ->whereNotNull($fAut3)
-            ->selectRaw("{$fAut3} as fecha, COUNT(*) as total")
-            ->groupBy($fAut3)
-            ->pluck('total', 'fecha');
+        $people = [
+            'total' => DB::table('personas')->count(),
+            'sin_seguimiento' => DB::table('personas')->whereNotExists(fn ($query) => $query->selectRaw('1')->from('seguimientos')->whereColumn('seguimientos.persona_id', 'personas.id'))->count(),
+            'en_equipos' => DB::table('equipo_campania_persona')->distinct()->count('persona_id'),
+            'equipos' => DB::table('equipos_campania')->count(),
+            'campanias' => DB::table('ejercicios_politicos')->count(),
+        ];
 
-        return collect()
-            ->merge($aut1->keys())
-            ->merge($aut2->keys())
-            ->merge($aut3->keys())
-            ->filter()
-            ->unique()
-            ->sortDesc()
-            ->map(function ($fecha) use ($aut1, $aut2, $aut3) {
-                $a1 = (int) ($aut1[$fecha] ?? 0);
-                $a2 = (int) ($aut2[$fecha] ?? 0);
-                $a3 = (int) ($aut3[$fecha] ?? 0);
+        $pendingPrevalidation = DB::table('prevalidaciones_contractuales')
+            ->where('anio', $year)->whereNull('seguimiento_id')
+            ->whereRaw("UPPER(TRIM(estado)) = 'APROBADO'")->count();
 
-                return [
-                    'fecha' => \Carbon\Carbon::parse($fecha)->format('Y-m-d'),
-                    'aut1' => $a1,
-                    'aut2' => $a2,
-                    'aut3' => $a3,
-                    'total' => $a1 + $a2 + $a3,
-                ];
-            })
-            ->take(20)
-            ->values()
-            ->all();
+        $total = max(1, (int) $summary->total);
+        $value = (float) $summary->valor_total;
+        $topValue = (float) ($secretarias->first()->valor ?? 0);
+
+        return [
+            'summary' => $summary,
+            'linked' => $linked,
+            'authorizations' => $authorizations,
+            'states' => $states,
+            'secretarias' => $secretarias,
+            'monthly' => $monthly,
+            'previous' => $previous,
+            'people' => $people,
+            'pending_prevalidation' => $pendingPrevalidation,
+            'ratios' => [
+                'secop' => round(((int) ($linked->total ?? 0) / $total) * 100, 1),
+                'adiciones' => round(((int) $summary->con_adicion / $total) * 100, 1),
+                'contratados' => round(((int) $summary->contratados / $total) * 100, 1),
+                'numeros' => round((1 - ((int) $summary->sin_numero / $total)) * 100, 1),
+                'fechas' => round((1 - ((int) $summary->sin_fechas / $total)) * 100, 1),
+                'valores' => round((1 - ((int) $summary->sin_valor / $total)) * 100, 1),
+                'concentracion' => $value > 0 ? round(($topValue / $value) * 100, 1) : 0,
+            ],
+        ];
     }
 }

@@ -8,7 +8,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 
 class ProcesarVinculacionSecopExacta implements ShouldQueue
@@ -22,15 +21,12 @@ class ProcesarVinculacionSecopExacta implements ShouldQueue
     {
     }
 
-    public function middleware(): array
-    {
-        return [(new WithoutOverlapping('secop-vinculacion-exacta'))->releaseAfter(2)->expireAfter(90)];
-    }
-
     public function handle(SecopVinculacionMasivaService $service): void
     {
         if ($service->processNext($this->loteId)) {
-            self::dispatch($this->loteId);
+            // El pequeño retraso permite que el trabajo actual cierre antes de
+            // que otro trabajador tome la siguiente persona del mismo lote.
+            self::dispatch($this->loteId)->delay(now()->addSecond());
         }
     }
 

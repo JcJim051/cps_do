@@ -7,6 +7,7 @@ use App\Models\SecopVinculo;
 use App\Models\Seguimiento;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class SecopConciliacionService
 {
@@ -25,12 +26,6 @@ class SecopConciliacionService
     ): array
     {
         $documento = $this->normalizer->documento($persona->cedula_o_nit);
-        $contratos = Cache::remember(
-            'datos_abiertos_contratos_'.$documento.'_'.sha1($desde),
-            600,
-            fn () => $this->secop->consultarPorDocumento($documento, $desde),
-        );
-
         $seguimientosQuery = $persona->seguimientos()->where('tipo', 'contrato');
         if ($anio !== null) {
             $seguimientosQuery->where('anio', $anio);
@@ -40,6 +35,41 @@ class SecopConciliacionService
             ->orderBy('anio')
             ->orderBy('id')
             ->get();
+
+        $consultaSecopDisponible = true;
+        try {
+            $contratos = Cache::remember(
+                'datos_abiertos_contratos_'.$documento.'_'.sha1($desde),
+                600,
+                fn () => $this->secop->consultarPorDocumento($documento, $desde),
+            );
+        } catch (\Throwable $e) {
+            $consultaSecopDisponible = false;
+            $contratos = $seguimientos
+                ->pluck('vinculoSecop')
+                ->filter()
+                ->map(function (SecopVinculo $vinculo) {
+                    $datos = $vinculo->ultimaInstantanea?->datos;
+                    if (!is_array($datos)) {
+                        return null;
+                    }
+
+                    return array_merge($datos, [
+                        'fuente_codigo' => $datos['fuente_codigo'] ?? $vinculo->fuente_secop,
+                        'identificador_externo' => $datos['identificador_externo'] ?? $vinculo->identificador_externo,
+                        'referencia_contrato' => $datos['referencia_contrato'] ?? $vinculo->referencia_contrato,
+                        'tipo_registro' => $datos['tipo_registro'] ?? 'contrato',
+                    ]);
+                })
+                ->filter()
+                ->values()
+                ->all();
+
+            Log::warning('SECOP no respondió al conciliar la persona; se usarán las últimas instantáneas locales.', [
+                'persona_id' => $persona->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $contratos = collect($contratos);
         $identificadores = $contratos
@@ -63,7 +93,8 @@ class SecopConciliacionService
             ]);
 
         $result = $this->conciliar($persona, $seguimientos, $contratos, $used);
-        if (!$consultarDocumentoDiferente) {
+        $result['consulta_secop_disponible'] = $consultaSecopDisponible;
+        if (!$consultarDocumentoDiferente || !$consultaSecopDisponible) {
             return $result;
         }
 

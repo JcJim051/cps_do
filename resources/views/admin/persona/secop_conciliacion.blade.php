@@ -33,6 +33,11 @@
 
         <div id="{{ $collapseId }}" class="collapse">
         <div class="card-body p-0">
+            @if(!($resultado['consulta_secop_disponible'] ?? true))
+                <div class="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0">
+                    SECOP no respondió en este momento. Se muestran los vínculos y las últimas instantáneas guardadas; los seguimientos sin vincular requieren reintentar la consulta.
+                </div>
+            @endif
             @if($canManage && ($metrics['vinculados'] > 0 || $metrics['exactos'] > 0))
                 <div class="px-3 py-2 border-bottom d-flex flex-wrap justify-content-end gap-2">
                     @if($metrics['vinculados'] > 0)
