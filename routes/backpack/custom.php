@@ -75,6 +75,8 @@ Route::group([
         Route::post('persona/{persona}/conciliacion-secop/sincronizar', 'PersonaSecopController@sync')->whereNumber('persona')->name('persona.secop.sync');
         Route::get('sincronizacion-secop', 'SecopSincronizacionController@index')->name('secop.sync.index');
         Route::post('sincronizacion-secop/aplicar', 'SecopSincronizacionController@apply')->name('secop.sync.apply');
+        Route::post('sincronizacion-secop/vincular-exactos', 'SecopSincronizacionController@startExact')->name('secop.sync.link-exact');
+        Route::get('sincronizacion-secop/vincular-exactos/estado', 'SecopSincronizacionController@exactStatus')->name('secop.sync.link-exact-status');
 
     });
 

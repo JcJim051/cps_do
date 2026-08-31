@@ -98,6 +98,21 @@ class SecopVinculacionService
         if (!$candidate) {
             throw new \RuntimeException('El registro SECOP ya no está disponible entre los candidatos válidos.');
         }
+
+        return $this->vincularSeguimientoDesdeCandidato($seguimiento, $candidate, $userId);
+    }
+
+    /**
+     * Vincula una coincidencia que ya fue obtenida y validada por la conciliación.
+     * Evita volver a consultar SECOP por cada contrato de un lote masivo.
+     */
+    public function vincularSeguimientoDesdeCandidato(Seguimiento $seguimiento, array $candidate, ?int $userId): SecopVinculo
+    {
+        $fuente = (string) ($candidate['fuente_codigo'] ?? '');
+        $identificador = (string) ($candidate['identificador_externo'] ?? '');
+        if ($fuente === '' || $identificador === '') {
+            throw new \RuntimeException('La coincidencia SECOP no tiene un identificador válido.');
+        }
         if (($candidate['tipo_registro'] ?? 'contrato') !== 'contrato') {
             throw new \RuntimeException('El proceso SECOP es solo informativo; la vinculación requiere un contrato confirmado.');
         }

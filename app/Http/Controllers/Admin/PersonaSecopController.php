@@ -35,10 +35,9 @@ class PersonaSecopController extends Controller
             }
 
             try {
-                $vinculacion->vincularSeguimiento(
+                $vinculacion->vincularSeguimientoDesdeCandidato(
                     $row['seguimiento']->load('persona'),
-                    $candidate['fuente_codigo'],
-                    (string) $candidate['identificador_externo'],
+                    $candidate,
                     backpack_user()?->id,
                 );
                 $linked++;

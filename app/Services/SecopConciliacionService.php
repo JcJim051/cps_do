@@ -17,30 +17,56 @@ class SecopConciliacionService
     ) {
     }
 
-    public function conciliarPersona(Persona $persona, string $desde = '2024-01-01'): array
+    public function conciliarPersona(
+        Persona $persona,
+        string $desde = '2024-01-01',
+        ?int $anio = null,
+        bool $consultarDocumentoDiferente = true,
+    ): array
     {
         $documento = $this->normalizer->documento($persona->cedula_o_nit);
         $contratos = Cache::remember(
-            'datos_abiertos_contratos_'.$documento,
+            'datos_abiertos_contratos_'.$documento.'_'.sha1($desde),
             600,
             fn () => $this->secop->consultarPorDocumento($documento, $desde),
         );
 
-        $seguimientos = $persona->seguimientos()
-            ->where('tipo', 'contrato')
+        $seguimientosQuery = $persona->seguimientos()->where('tipo', 'contrato');
+        if ($anio !== null) {
+            $seguimientosQuery->where('anio', $anio);
+        }
+        $seguimientos = $seguimientosQuery
             ->with(['secretaria', 'estadoContrato', 'vinculoSecop.ultimaInstantanea', 'prevalidacionOrigen.fuente'])
             ->orderBy('anio')
             ->orderBy('id')
             ->get();
 
-        $used = SecopVinculo::query()
-            ->whereNotNull('seguimiento_id')
-            ->get(['id', 'seguimiento_id', 'fuente_secop', 'identificador_externo'])
+        $contratos = collect($contratos);
+        $identificadores = $contratos
+            ->groupBy(fn (array $row) => (string) ($row['fuente_codigo'] ?? ''))
+            ->map(fn (Collection $rows) => $rows->pluck('identificador_externo')->filter()->unique()->values());
+        $usedQuery = SecopVinculo::query()->whereNotNull('seguimiento_id');
+        $usedQuery->where(function ($query) use ($identificadores) {
+            foreach ($identificadores as $fuente => $ids) {
+                if ($fuente !== '' && $ids->isNotEmpty()) {
+                    $query->orWhere(fn ($sourceQuery) => $sourceQuery
+                        ->where('fuente_secop', $fuente)
+                        ->whereIn('identificador_externo', $ids));
+                }
+            }
+        });
+        $used = $identificadores->flatten()->isEmpty()
+            ? collect()
+            : $usedQuery->get(['id', 'seguimiento_id', 'fuente_secop', 'identificador_externo'])
             ->mapWithKeys(fn ($link) => [
                 $link->fuente_secop.'|'.$link->identificador_externo => $link->seguimiento_id,
             ]);
 
-        $result = $this->conciliar($persona, $seguimientos, collect($contratos), $used);
+        $result = $this->conciliar($persona, $seguimientos, $contratos, $used);
+        if (!$consultarDocumentoDiferente) {
+            return $result;
+        }
+
         $result['filas'] = $result['filas']->map(function (array $row) use ($documento) {
             if ($row['estado'] !== 'sin_resultado' || !$row['seguimiento']->numero_contrato || !$row['seguimiento']->anio) {
                 return $row;
