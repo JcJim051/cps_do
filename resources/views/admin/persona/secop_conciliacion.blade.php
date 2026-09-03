@@ -24,7 +24,7 @@
                 <div class="small opacity-75">Simulación por cédula. Ninguna sugerencia se aplica sin confirmación.</div>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <span class="badge persona-tone-count">{{ $metrics['vinculados'] }} vinculados · {{ $metrics['revision'] }} por revisar</span>
+                <span class="badge persona-tone-count">{{ $metrics['vinculados'] }} vinculados · {{ $metrics['revision'] }} por revisar · {{ $metrics['solo_secop'] ?? 0 }} solo SECOP</span>
                 <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#{{ $collapseId }}" aria-expanded="false" aria-controls="{{ $collapseId }}">
                     <i class="la la-balance-scale"></i> Abrir conciliación
                 </button>
@@ -61,6 +61,7 @@
                 <span class="text-primary"><strong>{{ $metrics['vinculados'] }}</strong> vinculados</span>
                 <span class="text-warning"><strong>{{ $metrics['revision'] }}</strong> por revisar</span>
                 <span class="text-muted"><strong>{{ $metrics['sin_resultado'] }}</strong> sin resultado</span>
+                <span class="text-danger"><strong>{{ $metrics['solo_secop'] ?? 0 }}</strong> solo en Datos Abiertos</span>
             </div>
 
             <div class="table-responsive">
@@ -149,9 +150,30 @@
             </div>
 
             @if($resultado['contratos_sin_seguimiento']->isNotEmpty())
-                <div class="px-3 py-2 border-top bg-light small">
-                    <strong>Contratos SECOP sin Seguimiento conciliado:</strong>
-                    {{ $resultado['contratos_sin_seguimiento']->pluck('referencia_contrato')->filter()->implode(', ') }}
+                <div class="px-3 py-3 border-top bg-light">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <div>
+                            <strong>Contratos encontrados únicamente en Datos Abiertos</strong>
+                            <div class="small text-muted">No existe un Seguimiento con el mismo número y vigencia. Son hallazgos informativos; Integra no creará registros automáticamente.</div>
+                        </div>
+                        <span class="badge bg-danger">{{ $resultado['contratos_sin_seguimiento']->count() }} NO ESTÁN EN SEGUIMIENTO</span>
+                    </div>
+                    <div class="table-responsive bg-white border rounded">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light"><tr><th>Origen</th><th>Contrato</th><th>Entidad / estado</th><th>Vigencia observada</th><th class="text-end">Valor</th></tr></thead>
+                            <tbody>
+                            @foreach($resultado['contratos_sin_seguimiento'] as $contract)
+                                <tr>
+                                    <td><span class="badge bg-danger">SOLO DATOS ABIERTOS</span><br><small>{{ strtoupper($contract['fuente_codigo'] ?? 'SECOP') }}</small></td>
+                                    <td><strong>{{ $contract['referencia_contrato'] ?? $contract['identificador_externo'] ?? '-' }}</strong><br><small class="text-muted">{{ $contract['identificador_externo'] ?? '-' }}</small></td>
+                                    <td>{{ $contract['nombre_entidad'] ?? '-' }}<br><small>{{ $contract['estado'] ?? $contract['estado_contrato'] ?? '-' }}</small></td>
+                                    <td>{{ $contract['fecha_inicio'] ?? '-' }} → {{ $contract['fecha_fin'] ?? '-' }}<br><small>{{ isset($contract['duracion_dias']) ? $contract['duracion_dias'].' días' : '' }}</small></td>
+                                    <td class="text-end text-nowrap">{{ $money($contract['valor_total_con_adiciones'] ?? $contract['valor_total'] ?? null) }}</td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             @endif
         </div>

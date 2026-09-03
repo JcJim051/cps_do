@@ -39,7 +39,10 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Las consultas combinadas SECOP I/II pueden superar 90 segundos
+            // cuando Datos Abiertos reintenta. Debe ser mayor al timeout (120)
+            // de los jobs para evitar que dos workers procesen la misma persona.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 180),
             'after_commit' => false,
         ],
 

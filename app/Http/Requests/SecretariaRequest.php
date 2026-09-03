@@ -29,6 +29,7 @@ class SecretariaRequest extends FormRequest
             'convencion' => ['required', 'string', 'max:255'],
             'nit_secop' => ['nullable', 'string', 'max:30'],
             'nombre_secop' => ['nullable', 'string', 'max:255'],
+            'auditoria_secop_incluida' => ['boolean'],
         ];
     }
 

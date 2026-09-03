@@ -77,6 +77,8 @@ Route::group([
         Route::post('sincronizacion-secop/aplicar', 'SecopSincronizacionController@apply')->name('secop.sync.apply');
         Route::post('sincronizacion-secop/vincular-exactos', 'SecopSincronizacionController@startExact')->name('secop.sync.link-exact');
         Route::get('sincronizacion-secop/vincular-exactos/estado', 'SecopSincronizacionController@exactStatus')->name('secop.sync.link-exact-status');
+        Route::post('sincronizacion-secop/auditoria/iniciar', 'SecopSincronizacionController@startAudit')->name('secop.audit.start');
+        Route::get('sincronizacion-secop/auditoria/estado', 'SecopSincronizacionController@auditStatus')->name('secop.audit.status');
 
     });
 

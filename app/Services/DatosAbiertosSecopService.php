@@ -25,6 +25,27 @@ class DatosAbiertosSecopService
             ->all();
     }
 
+    /** Consulta contratos cuya ejecución se cruza con la vigencia indicada. */
+    public function consultarPorDocumentoVigencia(string $documento, int $anio, int $limit = 1000, array $nitEntidades = []): array
+    {
+        $desde = sprintf('%04d-01-01', $anio);
+        $hasta = sprintf('%04d-01-01', $anio + 1);
+        $vigencia = new SecopVigenciaService();
+
+        return collect(array_merge(
+            $this->consultarSecop2($documento, null, $limit, null, $desde, $hasta, $nitEntidades),
+            $this->consultarSecop1($documento, null, $limit, null, $desde, $hasta, $nitEntidades),
+        ))
+            ->filter(fn (array $row) => $vigencia->contratoPertenece($row, $anio))
+            ->when($nitEntidades !== [], fn ($rows) => $rows->filter(
+                fn (array $row) => $this->nitEstaPermitido($row['nit_entidad'] ?? null, $nitEntidades)
+            ))
+            ->unique(fn (array $row) => ($row['fuente_codigo'] ?? '').'|'.($row['identificador_externo'] ?? ''))
+            ->sortByDesc(fn (array $row) => $row['fecha_firma_sort'] ?? '')
+            ->values()
+            ->all();
+    }
+
     /** Consulta contratos vinculados en lotes, usando el identificador estable de cada conjunto. */
     public function consultarPorIdentificadores(string $fuente, array $identificadores): array
     {
@@ -100,7 +121,7 @@ class DatosAbiertosSecopService
             ." AND fecha_de_firma < '".($anio + 1)."-01-01T00:00:00.000'"
             ." AND upper(referencia_del_contrato) like '%{$needle}%'";
 
-        $response = Http::timeout(12)->get('https://www.datos.gov.co/resource/jbjy-vk9h.json', [
+        $response = Http::retry(2, 500)->timeout(20)->get('https://www.datos.gov.co/resource/jbjy-vk9h.json', [
             '$select' => $this->secop2Select(),
             '$where' => $where,
             '$order' => 'fecha_de_firma DESC',
@@ -123,7 +144,15 @@ class DatosAbiertosSecopService
             ->all();
     }
 
-    protected function consultarSecop2(string $documento, ?string $desde, int $limit, ?string $nitEntidad = null): array
+    protected function consultarSecop2(
+        string $documento,
+        ?string $desde,
+        int $limit,
+        ?string $nitEntidad = null,
+        ?string $vigenciaDesde = null,
+        ?string $vigenciaHasta = null,
+        array $nitEntidades = [],
+    ): array
     {
         $baseUrl = 'https://www.datos.gov.co/resource/jbjy-vk9h.json';
         $select = $this->secop2Select();
@@ -135,8 +164,19 @@ class DatosAbiertosSecopService
         if ($nitEntidad) {
             $where .= ' AND '.$this->nitWhere('nit_entidad', $nitEntidad, false);
         }
+        if ($vigenciaDesde && $vigenciaHasta) {
+            $where .= " AND ((fecha_de_inicio_del_contrato IS NOT NULL"
+                ." AND fecha_de_inicio_del_contrato < '{$vigenciaHasta}T00:00:00.000'"
+                ." AND (fecha_de_fin_del_contrato IS NULL OR fecha_de_fin_del_contrato >= '{$vigenciaDesde}T00:00:00.000'))"
+                ." OR (fecha_de_inicio_del_contrato IS NULL"
+                ." AND fecha_de_firma >= '{$vigenciaDesde}T00:00:00.000'"
+                ." AND fecha_de_firma < '{$vigenciaHasta}T00:00:00.000'))";
+        }
+        if ($nitEntidades !== []) {
+            $where .= ' AND '.$this->nitsWhere('nit_entidad', $nitEntidades, false);
+        }
 
-        $response = Http::timeout(12)->get($baseUrl, [
+        $response = Http::retry(2, 500)->timeout(20)->get($baseUrl, [
             '$select' => $select,
             '$where' => $where,
             '$order' => 'fecha_de_firma DESC',
@@ -150,7 +190,15 @@ class DatosAbiertosSecopService
         return collect($response->json())->map(fn (array $row) => $this->mapSecop2($row))->all();
     }
 
-    protected function consultarSecop1(string $documento, ?string $desde, int $limit, ?string $nitEntidad = null): array
+    protected function consultarSecop1(
+        string $documento,
+        ?string $desde,
+        int $limit,
+        ?string $nitEntidad = null,
+        ?string $vigenciaDesde = null,
+        ?string $vigenciaHasta = null,
+        array $nitEntidades = [],
+    ): array
     {
         $baseUrl = 'https://www.datos.gov.co/resource/f789-7hwg.json';
         $select = $this->secop1Select();
@@ -162,8 +210,19 @@ class DatosAbiertosSecopService
         if ($nitEntidad) {
             $where .= ' AND '.$this->nitWhere('nit_de_la_entidad', $nitEntidad, true);
         }
+        if ($vigenciaDesde && $vigenciaHasta) {
+            $where .= " AND ((fecha_ini_ejec_contrato IS NOT NULL"
+                ." AND fecha_ini_ejec_contrato < '{$vigenciaHasta}T00:00:00.000'"
+                ." AND (fecha_fin_ejec_contrato IS NULL OR fecha_fin_ejec_contrato >= '{$vigenciaDesde}T00:00:00.000'))"
+                ." OR (fecha_ini_ejec_contrato IS NULL"
+                ." AND fecha_de_firma_del_contrato >= '{$vigenciaDesde}T00:00:00.000'"
+                ." AND fecha_de_firma_del_contrato < '{$vigenciaHasta}T00:00:00.000'))";
+        }
+        if ($nitEntidades !== []) {
+            $where .= ' AND '.$this->nitsWhere('nit_de_la_entidad', $nitEntidades, true);
+        }
 
-        $response = Http::timeout(12)->get($baseUrl, [
+        $response = Http::retry(2, 500)->timeout(20)->get($baseUrl, [
             '$select' => $select,
             '$where' => $where,
             '$order' => 'fecha_de_firma_del_contrato DESC',
@@ -324,6 +383,28 @@ class DatosAbiertosSecopService
         });
 
         return '('.$conditions->implode(' OR ').')';
+    }
+
+    private function nitsWhere(string $field, array $nits, bool $quoted): string
+    {
+        $conditions = collect($nits)
+            ->map(fn ($nit) => $this->nitWhere($field, (string) $nit, $quoted))
+            ->filter(fn (string $condition) => $condition !== '1 = 0')
+            ->unique()
+            ->values();
+
+        return $conditions->isEmpty() ? '1 = 0' : '('.$conditions->implode(' OR ').')';
+    }
+
+    private function nitEstaPermitido(mixed $nit, array $permitidos): bool
+    {
+        foreach ($permitidos as $permitido) {
+            if ($this->normalizer->nitCoincide((string) $permitido, $nit)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function secop2Select(): string

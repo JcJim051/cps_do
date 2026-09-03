@@ -94,6 +94,29 @@
             $this->skipSecopExclusions = $value;
             return $this;
         }
+
+        /**
+         * Fecha contractual vigente. La fecha de finalización conserva el plazo
+         * inicial; cuando SECOP publica una prórroga, el fin vigente vive en el
+         * campo de adición.
+         */
+        public function getFechaFinalizacionVigenteAttribute(): mixed
+        {
+            return $this->fecha_finalizacion_adicion ?: $this->fecha_finalizacion;
+        }
+
+        /**
+         * Tiempo calendario vigente (plazo inicial + extensiones). No se debe
+         * confundir con el tiempo efectivo, que descuenta suspensiones.
+         */
+        public function getTiempoTotalVigenteDiasAttribute(): ?int
+        {
+            $value = $this->tiempo_total_calendario_dias
+                ?? $this->tiempo_total_ejecucion_dias
+                ?? $this->tiempo_ejecucion_dias;
+
+            return $value === null ? null : (int) $value;
+        }
     
         protected static function booted()
         {

@@ -50,6 +50,12 @@ class SecretariaCrudController extends CrudController
         ]);
         CRUD::addColumn(['name' => 'nit_secop', 'label' => 'NIT SECOP']);
         CRUD::addColumn(['name' => 'nombre_secop', 'label' => 'Entidad en SECOP']);
+        CRUD::addColumn([
+            'name' => 'auditoria_secop_incluida',
+            'label' => 'Auditoría departamental',
+            'type' => 'boolean',
+            'options' => [0 => 'No', 1 => 'Sí'],
+        ]);
     }
 
     /**
@@ -72,6 +78,12 @@ class SecretariaCrudController extends CrudController
             'name' => 'nombre_secop',
             'label' => 'Nombre de la entidad en SECOP',
             'hint' => 'Ejemplo: DEPARTAMENTO DEL META.',
+        ]);
+        CRUD::addField([
+            'name' => 'auditoria_secop_incluida',
+            'label' => 'Incluir en auditoría SECOP departamental',
+            'type' => 'checkbox',
+            'hint' => 'Actívalo únicamente para el Departamento del Meta y sus entidades descentralizadas.',
         ]);
 
         /**

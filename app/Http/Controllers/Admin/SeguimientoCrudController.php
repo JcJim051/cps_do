@@ -281,13 +281,26 @@ class SeguimientoCrudController extends CrudController
                 ],
             ],
             [
-                'name'  => 'fecha_finalizacion',
+                'name'  => 'fecha_finalizacion_vigente',
                 'label' => 'Finalización',
-                'type'  => 'date',
+                'type'  => 'closure',
                 'visibleInExport' => false,
-                'format' => 'DD/MM/YYYY',
+                'escaped' => false,
+                'function' => function ($entry) {
+                    $vigente = $entry->fecha_finalizacion_vigente;
+                    if (!$vigente) return '';
+
+                    $html = '<strong>'.e($vigente->format('d/m/Y')).'</strong>';
+                    if ($entry->fecha_finalizacion && !$entry->fecha_finalizacion->equalTo($vigente)) {
+                        $html .= '<br><small class="text-muted">Inicial: '.e($entry->fecha_finalizacion->format('d/m/Y')).'</small>';
+                    }
+                    return $html;
+                },
                 'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhere('fecha_finalizacion', 'like', "%{$searchTerm}%");
+                    $query->orWhere(function ($dateQuery) use ($searchTerm) {
+                        $dateQuery->where('fecha_finalizacion', 'like', "%{$searchTerm}%")
+                            ->orWhere('fecha_finalizacion_adicion', 'like', "%{$searchTerm}%");
+                    });
                 },
                 'wrapper' => [
                     'element' => 'div',
@@ -311,12 +324,28 @@ class SeguimientoCrudController extends CrudController
                 ],
             ],
             [
-                'name'  => 'tiempo_total_ejecucion_dias',
+                'name'  => 'tiempo_total_vigente_dias',
                 'label' => 'Tiempo',
-                'type'  => 'number',
+                'type'  => 'closure',
                 'visibleInExport' => false,
+                'escaped' => false,
+                'function' => function ($entry) {
+                    $calendario = $entry->tiempo_total_vigente_dias;
+                    if ($calendario === null) return '';
+
+                    $html = '<strong>'.e($calendario).' días</strong>';
+                    $efectivo = $entry->tiempo_total_ejecucion_dias;
+                    if ($entry->tiempo_total_calendario_dias !== null && $efectivo !== null && (int) $efectivo !== $calendario) {
+                        $html .= '<br><small class="text-muted">Ejecución: '.e((int) $efectivo).' días</small>';
+                    }
+                    return $html;
+                },
                 'searchLogic' => function ($query, $column, $searchTerm) {
-                    $query->orWhere('tiempo_total_ejecucion_dias', 'like', "%{$searchTerm}%");
+                    $query->orWhere(function ($timeQuery) use ($searchTerm) {
+                        $timeQuery->where('tiempo_total_calendario_dias', 'like', "%{$searchTerm}%")
+                            ->orWhere('tiempo_total_ejecucion_dias', 'like', "%{$searchTerm}%")
+                            ->orWhere('tiempo_ejecucion_dias', 'like', "%{$searchTerm}%");
+                    });
                 },
                 'wrapper' => [
                     'element' => 'div',
@@ -413,7 +442,14 @@ class SeguimientoCrudController extends CrudController
             ],
             [
                 'name' => 'finalizacion_export',
-                'label' => 'Finalización',
+                'label' => 'Finalización Vigente',
+                'type' => 'closure',
+                'function' => fn($entry) => optional($entry->fecha_finalizacion_vigente)?->format('Y-m-d'),
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'finalizacion_inicial_export',
+                'label' => 'Finalización Inicial',
                 'type' => 'closure',
                 'function' => fn($entry) => optional($entry->fecha_finalizacion)?->format('Y-m-d'),
                 'exportOnlyColumn' => true,
@@ -473,7 +509,14 @@ class SeguimientoCrudController extends CrudController
             ],
             [
                 'name' => 'total_dias_export',
-                'label' => 'Total Días',
+                'label' => 'Total Días Calendario',
+                'type' => 'closure',
+                'function' => fn($entry) => $entry->tiempo_total_vigente_dias,
+                'exportOnlyColumn' => true,
+            ],
+            [
+                'name' => 'total_dias_ejecucion_export',
+                'label' => 'Total Días Ejecución',
                 'type' => 'closure',
                 'function' => fn($entry) => $entry->tiempo_total_ejecucion_dias,
                 'exportOnlyColumn' => true,

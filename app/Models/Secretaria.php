@@ -21,6 +21,7 @@ class Secretaria extends Model
     // protected $primaryKey = 'id';
     // public $timestamps = false;
     protected $guarded = ['id'];
+    protected $casts = ['auditoria_secop_incluida' => 'boolean'];
     // protected $fillable = [];
     // protected $hidden = [];
 

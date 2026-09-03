@@ -11,11 +11,15 @@ use Illuminate\Support\Facades\Log;
 
 class SecopConciliacionService
 {
+    private SecopVigenciaService $vigencias;
+
     public function __construct(
         private DatosAbiertosSecopService $secop,
         private SecopNormalizer $normalizer,
         private SecopEntidadService $entidades,
+        ?SecopVigenciaService $vigencias = null,
     ) {
+        $this->vigencias = $vigencias ?? new SecopVigenciaService();
     }
 
     public function conciliarPersona(
@@ -23,11 +27,17 @@ class SecopConciliacionService
         string $desde = '2024-01-01',
         ?int $anio = null,
         bool $consultarDocumentoDiferente = true,
+        ?int $vigenciaEjecucion = null,
+        array $nitEntidades = [],
+        array $secretariaIds = [],
     ): array
     {
         $documento = $this->normalizer->documento($persona->cedula_o_nit);
         $seguimientosQuery = $persona->seguimientos()->where('tipo', 'contrato');
-        if ($anio !== null) {
+        if ($secretariaIds !== []) {
+            $seguimientosQuery->whereIn('secretaria_id', array_map('intval', $secretariaIds));
+        }
+        if ($anio !== null && $vigenciaEjecucion === null) {
             $seguimientosQuery->where('anio', $anio);
         }
         $seguimientos = $seguimientosQuery
@@ -35,13 +45,22 @@ class SecopConciliacionService
             ->orderBy('anio')
             ->orderBy('id')
             ->get();
+        if ($vigenciaEjecucion !== null) {
+            $seguimientos = $seguimientos
+                ->filter(fn (Seguimiento $seguimiento) => $this->vigencias->seguimientoPertenece($seguimiento, $vigenciaEjecucion))
+                ->values();
+        }
 
         $consultaSecopDisponible = true;
         try {
+            $scopeSuffix = $nitEntidades !== [] ? '_entidades_'.sha1(implode('|', $nitEntidades)) : '';
+            $cacheSuffix = ($vigenciaEjecucion !== null ? 'vigencia_'.$vigenciaEjecucion : sha1($desde)).$scopeSuffix;
             $contratos = Cache::remember(
-                'datos_abiertos_contratos_'.$documento.'_'.sha1($desde),
+                'datos_abiertos_contratos_'.$documento.'_'.$cacheSuffix,
                 600,
-                fn () => $this->secop->consultarPorDocumento($documento, $desde),
+                fn () => $vigenciaEjecucion !== null
+                    ? $this->secop->consultarPorDocumentoVigencia($documento, $vigenciaEjecucion, 1000, $nitEntidades)
+                    : $this->secop->consultarPorDocumento($documento, $desde),
             );
         } catch (\Throwable $e) {
             $consultaSecopDisponible = false;
@@ -72,6 +91,11 @@ class SecopConciliacionService
         }
 
         $contratos = collect($contratos);
+        if ($vigenciaEjecucion !== null) {
+            $contratos = $contratos
+                ->filter(fn (array $contrato) => $this->vigencias->contratoPertenece($contrato, $vigenciaEjecucion))
+                ->values();
+        }
         $identificadores = $contratos
             ->groupBy(fn (array $row) => (string) ($row['fuente_codigo'] ?? ''))
             ->map(fn (Collection $rows) => $rows->pluck('identificador_externo')->filter()->unique()->values());
@@ -144,7 +168,10 @@ class SecopConciliacionService
 
             return $row;
         });
-        $result['metricas'] = $this->metrics($result['filas']);
+        $result['metricas'] = array_merge(
+            $this->metrics($result['filas']),
+            ['solo_secop' => $result['contratos_sin_seguimiento']->count()],
+        );
 
         return $result;
     }
@@ -250,16 +277,37 @@ class SecopConciliacionService
             ];
         })->values();
 
-        $unmatched = $contratos->reject(function (array $candidate) use ($assigned, $used) {
+        // Un candidato ambiguo o pendiente de configuración no es un contrato
+        // "solo SECOP": si su número/vigencia ya existe localmente, continúa
+        // siendo una posible contraparte que debe revisarse.
+        $localContractKeys = $seguimientos
+            ->map(fn (Seguimiento $seguimiento) => $this->normalizer->contrato(
+                $seguimiento->numero_contrato,
+                $seguimiento->anio,
+            )['clave'])
+            ->filter()
+            ->unique();
+
+        $unmatched = $contratos->reject(function (array $candidate) use ($assigned, $used, $localContractKeys) {
             $key = ($candidate['fuente_codigo'] ?? '').'|'.($candidate['identificador_externo'] ?? '');
-            return $assigned->contains($key) || $used->has($key);
+            $contractKey = $this->normalizer->contrato(
+                $candidate['referencia_contrato'] ?? '',
+                $candidate['fecha_firma'] ?? null,
+            )['clave'];
+
+            return $assigned->contains($key)
+                || $used->has($key)
+                || ($contractKey && $localContractKeys->contains($contractKey));
         })->values();
+
+        $metrics = $this->metrics($rows);
+        $metrics['solo_secop'] = $unmatched->count();
 
         return [
             'persona' => $persona,
             'filas' => $rows,
             'contratos_sin_seguimiento' => $unmatched,
-            'metricas' => $this->metrics($rows),
+            'metricas' => $metrics,
         ];
     }
 
