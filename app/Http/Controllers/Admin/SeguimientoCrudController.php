@@ -1184,7 +1184,11 @@ class SeguimientoCrudController extends CrudController
 
     public function exportExcel(Request $request, SeguimientoFilterService $filterService)
     {
-        $query = \App\Models\Seguimiento::query()->with('persona');
+        $query = \App\Models\Seguimiento::query()->with([
+            'persona.referencias',
+            'secretaria',
+            'estadoContrato',
+        ]);
         $filterService->apply($query, $request->query());
 
         return Excel::download(new SeguimientoExport($query->get()), 'seguimientos_filtrados.xlsx');

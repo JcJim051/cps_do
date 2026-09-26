@@ -80,11 +80,8 @@ class SeguimientoImport implements
                     }
 
                     // 🚫 NO recalcular (Excel manda)
-                    $seguimiento->skipAutoCalculation = true;
+                    $seguimiento->skipAutoCalculation();
                     $seguimiento->fill($editableData);
-
-                    unset($seguimiento->skipAutoCalculation);
-                    unset($seguimiento['skipAutoCalculation']);
                     $seguimiento->save();
                 }
                 /* ===============================
@@ -105,10 +102,7 @@ class SeguimientoImport implements
                     ]));
 
                     // 🚫 NO recalcular (Excel manda)
-                    $seguimiento->skipAutoCalculation = true;
-
-                    unset($seguimiento->skipAutoCalculation);   
-                    unset($seguimiento['skipAutoCalculation']);
+                    $seguimiento->skipAutoCalculation();
                     $seguimiento->save();
                     
                 }

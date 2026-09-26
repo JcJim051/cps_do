@@ -6,6 +6,7 @@ use App\Services\DatosAbiertosSecopService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class ConsultaDatosAbiertosController extends Controller
 {
@@ -27,11 +28,23 @@ class ConsultaDatosAbiertosController extends Controller
         if ($cedula !== '') {
             $cacheKey = 'consulta_datos_abiertos_' . $cedula;
             try {
-                $results = Cache::remember($cacheKey . '_' . ($desde ?: 'all'), 600, function () use ($cedula, $desde) {
-                    return $this->datosAbiertosSecopService->consultarPorDocumento($cedula, $desde !== '' ? $desde : null);
-                });
+                $fullCacheKey = $cacheKey . '_' . ($desde ?: 'all');
+                $results = Cache::get($fullCacheKey);
+                if ($results === null) {
+                    $results = $this->datosAbiertosSecopService->consultarPorDocumento($cedula, $desde !== '' ? $desde : null);
+                    $warnings = $this->datosAbiertosSecopService->warnings();
+                    if ($warnings === []) {
+                        Cache::put($fullCacheKey, $results, 600);
+                    } else {
+                        $error = implode(' ', $warnings);
+                    }
+                }
             } catch (\Throwable $e) {
-                $error = 'No se pudo consultar Datos Abiertos.';
+                Log::error('No se pudo completar la consulta manual de Datos Abiertos.', [
+                    'documento_hash' => hash('sha256', $cedula),
+                    'error' => $e->getMessage(),
+                ]);
+                $error = 'No se pudo consultar Datos Abiertos. SECOP no respondió desde el servidor; intenta nuevamente en unos minutos.';
             }
         }
 

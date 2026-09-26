@@ -2,58 +2,56 @@
 
 namespace App\Exports;
 
+use Illuminate\Support\Collection;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SeguimientoExport implements FromCollection, WithHeadings
+class SeguimientoExport extends DefaultValueBinder implements FromCollection, ShouldAutoSize, WithColumnFormatting, WithCustomValueBinder, WithHeadings, WithStyles
 {
-    protected $entries;
-
-    public function __construct($entries)
+    public function __construct(protected Collection $entries)
     {
-        $this->entries = $entries; // Puede ser una Collection o un array
     }
 
-    public function collection()
+    public function collection(): Collection
     {
-        return collect($this->entries)->map(function ($s) {
+        return $this->entries->map(function ($seguimiento) {
             return [
-                'id'                          => $s->id ?? null,
-                'cedula_o_nit'                => $s->persona->cedula_o_nit ?? null,
-                'tipo'                        => $s->tipo,
-                'secretaria_id'               => $s->secretaria_id,
-                'gerencia_id'                 => $s->gerencia_id,
-                'fuente_id'                   => $s->fuente_id,
-                'estado_contrato_id'          => $s->estado_contrato_id,
-                'anio'                        => $s->anio,
-                'numero_contrato'             => $s->numero_contrato,
-                'fecha_acta_inicio'           => $s->fecha_acta_inicio,
-                'fecha_finalizacion'          => $s->fecha_finalizacion,
-                'tiempo_ejecucion_dias'       => $s->tiempo_ejecucion_dias,
-                'valor_mensual'               => $s->valor_mensual,
-                'valor_total'                 => $s->valor_total,
-                'aut_despacho'                => $s->aut_despacho ? 'SI' : 'NO',
-                'aut_planeacion'              => $s->aut_planeacion ? 'SI' : 'NO',
-                'aut_administrativa'          => $s->aut_administrativa ? 'SI' : 'NO',
-                'aut_despacho_adicion'        => $s->aut_despacho_adicion ? 'SI' : 'NO',
-                'aut_planeacion_adicion'      => $s->aut_planeacion_adicion ? 'SI' : 'NO',
-                'aut_administrativa_adicion'  => $s->aut_administrativa_adicion ? 'SI' : 'NO',
-                'fecha_aut_despacho'          => $s->fecha_aut_despacho,
-                'fecha_aut_planeacion'        => $s->fecha_aut_planeacion,
-                'fecha_aut_administrativa'    => $s->fecha_aut_administrativa,
-                'fecha_aut_despacho_adicion'  => $s->fecha_aut_despacho_adicion,
-                'fecha_aut_planeacion_adicion'=> $s->fecha_aut_planeacion_adicion,
-                'fecha_aut_administrativa_adicion' => $s->fecha_aut_administrativa_adicion,
-                'adicion'                     => $s->adicion,
-                'fecha_acta_inicio_adicion'   => $s->fecha_acta_inicio_adicion,
-                'fecha_finalizacion_adicion'  => $s->fecha_finalizacion_adicion,
-                'tiempo_ejecucion_dias_adicion' => $s->tiempo_ejecucion_dias_adicion,
-                'tiempo_total_ejecucion_dias' => $s->tiempo_total_ejecucion_dias,
-                'valor_adicion'               => $s->valor_adicion,
-                'valor_total_contrato'        => $s->valor_total_contrato,
-                'evaluacion_id'               => $s->evaluacion_id,
-                'continua'                    => $s->continua,
-                'observaciones_contrato'      => $s->observaciones_contrato,
+                'dependencia' => $seguimiento->secretaria?->nombre ?? '',
+                'nombre' => $seguimiento->persona?->nombre_contratista ?? '',
+                'cedula' => $seguimiento->persona?->cedula_o_nit ?? '',
+                'anio' => $seguimiento->anio,
+                'estado' => $seguimiento->tipo === 'entrevista'
+                    ? ($seguimiento->estado ?? '')
+                    : ($seguimiento->estadoContrato?->nombre ?? ''),
+                'cto' => $seguimiento->numero_contrato ?? '',
+                'inicio' => $seguimiento->fecha_acta_inicio
+                    ? ExcelDate::dateTimeToExcel($seguimiento->fecha_acta_inicio)
+                    : null,
+                'finalizacion' => $seguimiento->fecha_finalizacion_vigente
+                    ? ExcelDate::dateTimeToExcel($seguimiento->fecha_finalizacion_vigente)
+                    : null,
+                'honorarios' => $seguimiento->valor_mensual === null
+                    ? null
+                    : (float) $seguimiento->valor_mensual,
+                'tiempo' => $seguimiento->tiempo_total_vigente_dias,
+                'valor_total' => $seguimiento->valor_total_contrato === null
+                    ? null
+                    : (float) $seguimiento->valor_total_contrato,
+                'referencias' => $seguimiento->persona?->referencias
+                    ?->pluck('nombre')
+                    ->filter()
+                    ->unique()
+                    ->implode(', ') ?? '',
             ];
         });
     }
@@ -61,42 +59,51 @@ class SeguimientoExport implements FromCollection, WithHeadings
     public function headings(): array
     {
         return [
-            'id',
-            'cedula_o_nit',
-            'tipo',
-            'secretaria_id',
-            'gerencia_id',
-            'fuente_id',
-            'estado_contrato_id',
-            'anio',
-            'numero_contrato',
-            'fecha_acta_inicio',
-            'fecha_finalizacion',
-            'tiempo_ejecucion_dias',
-            'valor_mensual',
-            'valor_total',
-            'aut_despacho',
-            'aut_planeacion',
-            'aut_administrativa',
-            'aut_despacho_adicion',
-            'aut_planeacion_adicion',
-            'aut_administrativa_adicion',
-            'fecha_aut_despacho',
-            'fecha_aut_planeacion',
-            'fecha_aut_administrativa',
-            'fecha_aut_despacho_adicion',
-            'fecha_aut_planeacion_adicion',
-            'fecha_aut_administrativa_adicion',
-            'adicion',
-            'fecha_acta_inicio_adicion',
-            'fecha_finalizacion_adicion',
-            'tiempo_ejecucion_dias_adicion',
-            'tiempo_total_ejecucion_dias',
-            'valor_adicion',
-            'valor_total_contrato',
-            'evaluacion_id',
-            'continua',
-            'observaciones_contrato',
+            'DEPENDENCIA',
+            'NOMBRE',
+            'CEDULA',
+            'AÑO',
+            'ESTADO',
+            'CTO',
+            'INICIO',
+            'FINALIZACIÓN',
+            'HONORARIOS',
+            'TIEMPO',
+            'VALOR TOTAL',
+            'REFERENCIAS',
+        ];
+    }
+
+    public function columnFormats(): array
+    {
+        return [
+            'C' => NumberFormat::FORMAT_TEXT,
+            'F' => NumberFormat::FORMAT_TEXT,
+            'G' => 'dd/mm/yyyy',
+            'H' => 'dd/mm/yyyy',
+            'I' => '$#,##0.00',
+            'K' => '$#,##0.00',
+        ];
+    }
+
+    public function bindValue(Cell $cell, $value): bool
+    {
+        if (in_array($cell->getColumn(), ['C', 'F'], true) && $value !== null) {
+            $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
+
+            return true;
+        }
+
+        return parent::bindValue($cell, $value);
+    }
+
+    public function styles(Worksheet $sheet): array
+    {
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter('A1:L1');
+
+        return [
+            1 => ['font' => ['bold' => true]],
         ];
     }
 }

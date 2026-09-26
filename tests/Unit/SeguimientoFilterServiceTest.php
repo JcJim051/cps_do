@@ -37,6 +37,16 @@ class SeguimientoFilterServiceTest extends TestCase
             $table->unsignedBigInteger('persona_id');
             $table->unsignedBigInteger('referencia_id');
         });
+        Schema::create('secretarias', function (Blueprint $table) {
+            $table->id();
+            $table->string('nombre');
+            $table->timestamps();
+        });
+        Schema::create('estados', function (Blueprint $table) {
+            $table->id();
+            $table->string('nombre');
+            $table->timestamps();
+        });
         Schema::create('seguimientos', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('persona_id');
@@ -62,6 +72,14 @@ class SeguimientoFilterServiceTest extends TestCase
             ['persona_id' => 1, 'referencia_id' => 7],
             ['persona_id' => 2, 'referencia_id' => 8],
             ['persona_id' => 3, 'referencia_id' => 8],
+        ]);
+        DB::table('secretarias')->insert([
+            ['id' => 10, 'nombre' => 'Secretaría A', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 20, 'nombre' => 'Secretaría B', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        DB::table('estados')->insert([
+            ['id' => 1, 'nombre' => 'APROBADO', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'nombre' => 'CONTRATADO', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::table('seguimientos')->insert([
             ['id' => 11, 'persona_id' => 1, 'estado_contrato_id' => 1, 'secretaria_id' => 10, 'gerencia_id' => 100, 'anio' => 2026, 'observaciones_contrato' => 'prioritario', 'created_at' => now(), 'updated_at' => now()],
@@ -137,7 +155,7 @@ class SeguimientoFilterServiceTest extends TestCase
 
     public function test_exportacion_recibe_exactamente_los_registros_filtrados(): void
     {
-        $query = Seguimiento::query()->with('persona');
+        $query = Seguimiento::query()->with(['persona.referencias', 'secretaria', 'estadoContrato']);
         $this->service->apply($query, [
             'personas' => '["1","2"]',
             'estado_contrato_id' => '["1"]',
@@ -145,6 +163,6 @@ class SeguimientoFilterServiceTest extends TestCase
 
         $export = new SeguimientoExport($query->get());
 
-        $this->assertSame([11], $export->collection()->pluck('id')->all());
+        $this->assertSame(['101'], $export->collection()->pluck('cedula')->all());
     }
 }

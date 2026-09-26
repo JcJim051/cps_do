@@ -121,11 +121,21 @@
         protected static function booted()
         {
             static::saving(function ($seguimiento) {
-                if (!$seguimiento->skipAutoCalculation && $seguimiento->tipo === 'contrato' && $seguimiento->estado_contrato_id) {
+                // 🚫 Excel manda → no tocar nada
+                if ($seguimiento->skipAutoCalculation) {
+                    return;
+                }
+
+                if ($seguimiento->tipo !== 'contrato') {
+                    return;
+                }
+
+                if ($seguimiento->estado_contrato_id) {
                     $estado = Estados::query()->find($seguimiento->estado_contrato_id)?->nombre;
                     $estado = mb_strtoupper(trim((string) $estado));
 
                     if ($estado === 'APROBADO') {
+                        // El estado manda sobre el valor false que envía un checkbox apagado.
                         $seguimiento->aut_despacho = true;
                         $seguimiento->fecha_aut_despacho ??= Carbon::now('America/Bogota')->toDateString();
                     } elseif (in_array($estado, ['PENDIENTE', 'PENDIENTE APROBACIÓN', 'CAMBIO'], true)) {
@@ -133,14 +143,14 @@
                         $seguimiento->fecha_aut_despacho = null;
                     }
                 }
-    
-                // 🚫 Excel manda → no tocar nada
-                if ($seguimiento->skipAutoCalculation) {
-                    return;
-                }
-    
-                if ($seguimiento->tipo !== 'contrato') {
-                    return;
+
+                $adicion = mb_strtoupper(trim((string) $seguimiento->adicion));
+                if ($adicion === 'SI') {
+                    $seguimiento->aut_despacho_adicion = true;
+                    $seguimiento->fecha_aut_despacho_adicion ??= Carbon::now('America/Bogota')->toDateString();
+                } elseif ($adicion === 'NO') {
+                    $seguimiento->aut_despacho_adicion = false;
+                    $seguimiento->fecha_aut_despacho_adicion = null;
                 }
     
                 // --- tiempo ejecución contrato ---
@@ -154,7 +164,6 @@
                     $seguimiento->tiempo_ejecucion_dias = $inicio->diffInDays($fin);
                 }
     
-                // --- Adición ---
                 // --- Adición ---
                 if ($seguimiento->adicion === 'SI') {
 

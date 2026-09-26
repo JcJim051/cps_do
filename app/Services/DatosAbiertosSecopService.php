@@ -3,26 +3,57 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class DatosAbiertosSecopService
 {
+    private array $warnings = [];
+
     public function __construct(private SecopNormalizer $normalizer)
     {
     }
 
     public function consultarPorDocumento(string $documento, ?string $desde = null, int $limit = 1000): array
     {
-        $secop2 = $this->consultarSecop2($documento, $desde, $limit);
-        $secop1 = $this->consultarSecop1($documento, $desde, $limit);
+        $this->warnings = [];
+        $results = [];
+        $successfulSources = 0;
 
-        return collect(array_merge($secop2, $secop1))
+        foreach ([
+            'SECOP II' => fn () => $this->consultarSecop2($documento, $desde, $limit),
+            'SECOP I' => fn () => $this->consultarSecop1($documento, $desde, $limit),
+        ] as $source => $query) {
+            try {
+                $results[] = $query();
+                $successfulSources++;
+            } catch (\Throwable $e) {
+                $this->warnings[] = $source.' no respondió; se muestran los resultados disponibles de la otra fuente.';
+                Log::warning('Falló una fuente en la consulta manual de Datos Abiertos.', [
+                    'fuente' => $source,
+                    'documento_hash' => hash('sha256', $documento),
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($successfulSources === 0) {
+            throw new \RuntimeException('SECOP I y SECOP II no respondieron. Revisa la conectividad o los límites de Datos Abiertos.');
+        }
+
+        return collect(array_merge(...$results))
             ->sortByDesc(function (array $row) {
                 return $row['fecha_firma_sort'] ?? '';
             })
             ->values()
             ->all();
+    }
+
+    public function warnings(): array
+    {
+        return $this->warnings;
     }
 
     /** Consulta contratos cuya ejecución se cruza con la vigencia indicada. */
@@ -58,7 +89,7 @@ class DatosAbiertosSecopService
             $usable = $chunk->filter(fn ($id) => $fuente !== 'secop1' || !str_contains((string) $id, '|'));
             if ($usable->isEmpty()) continue;
             $quoted = $usable->map(fn ($id) => "'".str_replace("'", "''", (string) $id)."'")->implode(',');
-            $response = Http::timeout(25)->get(
+            $response = $this->http(25, false)->get(
                 $fuente === 'secop1'
                     ? 'https://www.datos.gov.co/resource/f789-7hwg.json'
                     : 'https://www.datos.gov.co/resource/jbjy-vk9h.json',
@@ -121,7 +152,7 @@ class DatosAbiertosSecopService
             ." AND fecha_de_firma < '".($anio + 1)."-01-01T00:00:00.000'"
             ." AND upper(referencia_del_contrato) like '%{$needle}%'";
 
-        $response = Http::retry(2, 500)->timeout(20)->get('https://www.datos.gov.co/resource/jbjy-vk9h.json', [
+        $response = $this->http(20)->get('https://www.datos.gov.co/resource/jbjy-vk9h.json', [
             '$select' => $this->secop2Select(),
             '$where' => $where,
             '$order' => 'fecha_de_firma DESC',
@@ -176,7 +207,7 @@ class DatosAbiertosSecopService
             $where .= ' AND '.$this->nitsWhere('nit_entidad', $nitEntidades, false);
         }
 
-        $response = Http::retry(2, 500)->timeout(20)->get($baseUrl, [
+        $response = $this->http(20)->get($baseUrl, [
             '$select' => $select,
             '$where' => $where,
             '$order' => 'fecha_de_firma DESC',
@@ -222,7 +253,7 @@ class DatosAbiertosSecopService
             $where .= ' AND '.$this->nitsWhere('nit_de_la_entidad', $nitEntidades, true);
         }
 
-        $response = Http::retry(2, 500)->timeout(20)->get($baseUrl, [
+        $response = $this->http(20)->get($baseUrl, [
             '$select' => $select,
             '$where' => $where,
             '$order' => 'fecha_de_firma_del_contrato DESC',
@@ -303,7 +334,7 @@ class DatosAbiertosSecopService
             $where .= ' AND '.$this->nitWhere('nit_entidad', $nitEntidad, true);
         }
 
-        $proponentes = Http::timeout(15)->get('https://www.datos.gov.co/resource/hgi6-6wh3.json', [
+        $proponentes = $this->http(15, false)->get('https://www.datos.gov.co/resource/hgi6-6wh3.json', [
             '$select' => 'id_procedimiento,fecha_publicaci_n,nombre_procedimiento,nit_entidad,entidad_compradora,nit_proveedor',
             '$where' => $where,
             '$order' => 'fecha_publicaci_n DESC',
@@ -316,7 +347,7 @@ class DatosAbiertosSecopService
         }
 
         $quoted = $ids->map(fn ($id) => "'".str_replace("'", "''", $id)."'")->implode(',');
-        $rows = Http::timeout(18)->get('https://www.datos.gov.co/resource/p6dx-8zbt.json', [
+        $rows = $this->http(18, false)->get('https://www.datos.gov.co/resource/p6dx-8zbt.json', [
             '$select' => implode(',', [
                 'entidad', 'nit_entidad', 'id_del_proceso', 'referencia_del_proceso', 'nombre_del_procedimiento',
                 'descripci_n_del_procedimiento', 'fase', 'estado_del_procedimiento', 'estado_resumen',
@@ -492,5 +523,18 @@ class DatosAbiertosSecopService
     protected function digits(string $value): string
     {
         return preg_replace('/\D+/', '', $value);
+    }
+
+    private function http(int $timeout, bool $retry = true): PendingRequest
+    {
+        $request = Http::acceptJson()
+            ->connectTimeout(5)
+            ->timeout($timeout);
+
+        if ($token = trim((string) config('services.socrata.app_token'))) {
+            $request = $request->withHeaders(['X-App-Token' => $token]);
+        }
+
+        return $retry ? $request->retry(2, 500) : $request;
     }
 }

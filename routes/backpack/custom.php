@@ -100,9 +100,9 @@ Route::group([
     Route::get('seguimiento-nom/template', 'App\Http\Controllers\Admin\SeguimientoNomCrudController@downloadTemplate')->name('seguimiento-nom.downloadTemplate');
     
     
-    Route::crud('autorizacion', 'AutorizacionCrudController');
     Route::get('autorizacion/fetch-persona', 'AutorizacionCrudController@fetchPersonaFilter')
         ->name('autorizacion.fetchPersonaFilter');
+    Route::crud('autorizacion', 'AutorizacionCrudController');
     Route::post('autorizacion/{id}/estado-aprobacion', 'AutorizacionCrudController@updateEstadoAprobacion')
         ->name('autorizacion.updateEstadoAprobacion');
     Route::post('autorizacion/{id}/toggle-planeacion', 'AutorizacionCrudController@togglePlaneacion')

@@ -56,6 +56,7 @@ class PrevalidacionContractualTest extends TestCase
             $t->integer('tiempo_ejecucion_dias')->nullable(); $t->decimal('valor_mensual', 15, 2)->nullable();
             $t->decimal('valor_total', 15, 2)->nullable(); $t->decimal('valor_total_contrato', 15, 2)->nullable();
             $t->boolean('aut_despacho')->default(false); $t->date('fecha_aut_despacho')->nullable();
+            $t->boolean('aut_despacho_adicion')->default(false); $t->date('fecha_aut_despacho_adicion')->nullable();
             $t->string('adicion')->nullable(); $t->date('fecha_acta_inicio_adicion')->nullable();
             $t->date('fecha_finalizacion_adicion')->nullable(); $t->integer('tiempo_ejecucion_dias_adicion')->nullable();
             $t->integer('tiempo_total_ejecucion_dias')->nullable(); $t->decimal('valor_adicion', 15, 2)->nullable();
@@ -112,6 +113,61 @@ class PrevalidacionContractualTest extends TestCase
         $tracking->save();
         $this->assertFalse($tracking->fresh()->aut_despacho);
         $this->assertNull($tracking->fresh()->fecha_aut_despacho);
+    }
+
+    public function test_aprobado_prevalece_sobre_checkbox_falso_y_conserva_fecha_existente(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+        $approved = Estados::where('nombre', 'APROBADO')->firstOrFail();
+        $existingDate = '2026-08-20';
+
+        $tracking = Seguimiento::create([
+            'persona_id' => 1,
+            'tipo' => 'contrato',
+            'estado_contrato_id' => $approved->id,
+            'aut_despacho' => false,
+            'fecha_aut_despacho' => $existingDate,
+        ]);
+
+        $this->assertTrue($tracking->fresh()->aut_despacho);
+        $this->assertSame($existingDate, $tracking->fresh()->fecha_aut_despacho->toDateString());
+    }
+
+    public function test_adicion_manual_activa_autorizacion_uno_y_no_la_retira(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+
+        $tracking = Seguimiento::create([
+            'persona_id' => 1,
+            'tipo' => 'contrato',
+            'adicion' => 'SI',
+            'aut_despacho_adicion' => false,
+        ]);
+
+        $this->assertTrue($tracking->fresh()->aut_despacho_adicion);
+        $this->assertNotNull($tracking->fresh()->fecha_aut_despacho_adicion);
+
+        $tracking->adicion = 'NO';
+        $tracking->save();
+
+        $this->assertFalse($tracking->fresh()->aut_despacho_adicion);
+        $this->assertNull($tracking->fresh()->fecha_aut_despacho_adicion);
+    }
+
+    public function test_importacion_o_secop_no_autoriza_adicion(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+
+        $tracking = (new Seguimiento([
+            'persona_id' => 1,
+            'tipo' => 'contrato',
+            'adicion' => 'SI',
+            'aut_despacho_adicion' => false,
+        ]))->skipAutoCalculation();
+        $tracking->save();
+
+        $this->assertFalse($tracking->fresh()->aut_despacho_adicion);
+        $this->assertNull($tracking->fresh()->fecha_aut_despacho_adicion);
     }
 
     public function test_promocion_crea_persona_y_seguimiento_una_sola_vez(): void

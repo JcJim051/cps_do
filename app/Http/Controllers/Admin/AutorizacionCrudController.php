@@ -100,13 +100,33 @@ class AutorizacionCrudController extends CrudController
         $this->crud->addFilter([
             'name'  => 'persona_id',
             'type'  => 'select2_ajax',
-            'label' => 'Persona',
-            'placeholder' => 'Buscar persona...',
+            'label' => 'Persona / Cedula',
+            'placeholder' => 'Buscar por nombre o cedula...',
             'minimum_input_length' => 2,
             'select_attribute' => 'display_name',
             'select_key' => 'id',
         ], backpack_url('autorizacion/fetch-persona'), function ($value) {
             $this->crud->addClause('where', 'seguimientos.persona_id', $value);
+        });
+
+        $this->crud->addFilter([
+            'name'  => 'cedula_o_nit',
+            'type'  => 'text',
+            'label' => 'Cedula / NIT',
+        ], false, function ($value) {
+            $term = trim((string) $value);
+            if ($term === '') {
+                return;
+            }
+
+            $digits = preg_replace('/\D+/', '', $term) ?: $term;
+            $this->crud->addClause('whereHas', 'persona', function ($query) use ($term, $digits) {
+                $query->where('cedula_o_nit', 'like', '%'.$term.'%')
+                    ->orWhereRaw(
+                        "REPLACE(REPLACE(REPLACE(cedula_o_nit, '.', ''), '-', ''), ' ', '') LIKE ?",
+                        ['%'.$digits.'%']
+                    );
+            });
         });
 
         $this->crud->addFilter([
@@ -170,11 +190,23 @@ class AutorizacionCrudController extends CrudController
             'type' => 'closure',
             'escaped' => false,
             'function' => function ($entry) {
-                return e(optional($entry->persona)->nombre_contratista ?? 'N/A');
+                $persona = $entry->persona;
+                if (!$persona) {
+                    return 'N/A';
+                }
+
+                return '<strong>'.e($persona->nombre_contratista ?: 'Sin nombre').'</strong>'
+                    .'<br><small class="text-muted">'.e($persona->cedula_o_nit ?: 'Sin documento').'</small>';
             },
             'searchLogic' => function ($query, $column, $searchTerm) {
                 $query->orWhereHas('persona', function ($q) use ($searchTerm) {
-                    $q->where('nombre_contratista', 'like', '%'.$searchTerm.'%');
+                    $digits = preg_replace('/\D+/', '', (string) $searchTerm) ?: $searchTerm;
+                    $q->where('nombre_contratista', 'like', '%'.$searchTerm.'%')
+                        ->orWhere('cedula_o_nit', 'like', '%'.$searchTerm.'%')
+                        ->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(cedula_o_nit, '.', ''), '-', ''), ' ', '') LIKE ?",
+                            ['%'.$digits.'%']
+                        );
                 });
             },
         ]);
@@ -661,14 +693,19 @@ class AutorizacionCrudController extends CrudController
 
     public function fetchPersonaFilter(Request $request)
     {
-        $term = $request->input('q');
+        $term = trim((string) $request->input('q', $request->input('term', '')));
 
         $query = Persona::query()->selectRaw("id, CONCAT(nombre_contratista, ' - ', COALESCE(cedula_o_nit,'')) as display_name");
 
-        if ($term) {
-            $query->where(function ($q) use ($term) {
+        if ($term !== '') {
+            $digits = preg_replace('/\D+/', '', $term) ?: $term;
+            $query->where(function ($q) use ($term, $digits) {
                 $q->where('nombre_contratista', 'like', "%{$term}%")
-                    ->orWhere('cedula_o_nit', 'like', "%{$term}%");
+                    ->orWhere('cedula_o_nit', 'like', "%{$term}%")
+                    ->orWhereRaw(
+                        "REPLACE(REPLACE(REPLACE(cedula_o_nit, '.', ''), '-', ''), ' ', '') LIKE ?",
+                        ['%'.$digits.'%']
+                    );
             });
         }
 
