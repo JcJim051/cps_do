@@ -15,6 +15,7 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\Exportable;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Carbon\Carbon; // Importamos Carbon para usar today()
+use App\Exports\SeguimientoExecutiveExport;
 use App\Exports\SeguimientoExport;
 use App\Models\Persona;
 use App\Services\SeguimientoFilterService;
@@ -41,6 +42,7 @@ class SeguimientoCrudController extends CrudController
        
         $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end');
         $this->crud->addButtonFromView('top', 'export_excel', 'buttons.export_excel', 'end');
+        $this->crud->addButtonFromView('top', 'export_executive_excel', 'buttons.export_executive_excel', 'end');
         $this->crud->enableExportButtons();
        
 
@@ -1184,6 +1186,14 @@ class SeguimientoCrudController extends CrudController
 
     public function exportExcel(Request $request, SeguimientoFilterService $filterService)
     {
+        $query = \App\Models\Seguimiento::query()->with('persona');
+        $filterService->apply($query, $request->query());
+
+        return Excel::download(new SeguimientoExport($query->get()), 'seguimientos_filtrados.xlsx');
+    }
+
+    public function exportExecutiveExcel(Request $request, SeguimientoFilterService $filterService)
+    {
         $query = \App\Models\Seguimiento::query()->with([
             'persona.referencias',
             'secretaria',
@@ -1191,7 +1201,10 @@ class SeguimientoCrudController extends CrudController
         ]);
         $filterService->apply($query, $request->query());
 
-        return Excel::download(new SeguimientoExport($query->get()), 'seguimientos_filtrados.xlsx');
+        return Excel::download(
+            new SeguimientoExecutiveExport($query->get()),
+            'seguimientos_ejecutivos_filtrados.xlsx'
+        );
     }
 
 

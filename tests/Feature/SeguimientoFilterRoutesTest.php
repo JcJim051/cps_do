@@ -9,7 +9,7 @@ class SeguimientoFilterRoutesTest extends TestCase
 {
     public function test_buscador_y_exportacion_estan_protegidos_por_backpack(): void
     {
-        foreach (['seguimiento.fetch-personas', 'seguimiento.export-excel'] as $name) {
+        foreach (['seguimiento.fetch-personas', 'seguimiento.export-excel', 'seguimiento.export-executive-excel'] as $name) {
             $route = Route::getRoutes()->getByName($name);
 
             $this->assertNotNull($route, "No existe la ruta {$name}.");
@@ -18,5 +18,9 @@ class SeguimientoFilterRoutesTest extends TestCase
         }
 
         $this->assertSame('admin/seguimiento/export-excel', Route::getRoutes()->getByName('seguimiento.export-excel')->uri());
+        $this->assertSame(
+            'admin/seguimiento/export-executive-excel',
+            Route::getRoutes()->getByName('seguimiento.export-executive-excel')->uri()
+        );
     }
 }

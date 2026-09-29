@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
+use App\Exports\SeguimientoExecutiveExport;
 use App\Exports\SeguimientoExport;
+use App\Exports\SeguimientoTemplateExport;
 use App\Models\Estados;
 use App\Models\Persona;
 use App\Models\Referencia;
@@ -46,7 +48,7 @@ class SeguimientoExportTest extends TestCase
         $seguimiento->setRelation('secretaria', (new Secretaria())->forceFill(['nombre' => 'AIM']));
         $seguimiento->setRelation('estadoContrato', (new Estados())->forceFill(['nombre' => 'CONTRATADO']));
 
-        $export = new SeguimientoExport(collect([$seguimiento]));
+        $export = new SeguimientoExecutiveExport(collect([$seguimiento]));
         $row = $export->collection()->first();
 
         $this->assertSame([
@@ -76,6 +78,49 @@ class SeguimientoExportTest extends TestCase
             $this->assertSame('$#,##0.00', $sheet->getStyle('K2')->getNumberFormat()->getFormatCode());
             $this->assertSame('A1:L1', $sheet->getAutoFilter()->getRange());
             $this->assertSame('A2', $sheet->getFreezePane());
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_exportacion_editable_conserva_las_36_columnas_reimportables(): void
+    {
+        $persona = new Persona([
+            'nombre_contratista' => 'PERSONA PRUEBA',
+            'cedula_o_nit' => '1030590916',
+        ]);
+        $seguimiento = new Seguimiento([
+            'tipo' => 'contrato',
+            'anio' => 2026,
+            'numero_contrato' => '059-2026',
+            'aut_despacho' => true,
+            'adicion' => 'NO',
+        ]);
+        $seguimiento->id = 7753;
+        $seguimiento->setRelation('persona', $persona);
+
+        $export = new SeguimientoExport(collect([$seguimiento]));
+        $row = $export->collection()->first();
+        $templateHeadings = (new SeguimientoTemplateExport())->sheets()[0]->headings();
+
+        $this->assertCount(36, $export->headings());
+        $this->assertSame(SeguimientoExport::HEADINGS, $export->headings());
+        $this->assertSame($templateHeadings, $export->headings());
+        $this->assertSame('id', $export->headings()[0]);
+        $this->assertSame('observaciones_contrato', $export->headings()[35]);
+        $this->assertSame(7753, $row['id']);
+        $this->assertSame('1030590916', $row['cedula_o_nit']);
+        $this->assertSame('SI', $row['aut_despacho']);
+
+        $path = tempnam(sys_get_temp_dir(), 'seguimiento-editable-');
+        file_put_contents($path, Excel::raw($export, ExcelWriter::XLSX));
+
+        try {
+            $sheet = IOFactory::load($path)->getActiveSheet();
+            $this->assertSame('id', $sheet->getCell('A1')->getValue());
+            $this->assertSame('observaciones_contrato', $sheet->getCell('AJ1')->getValue());
+            $this->assertSame(7753, $sheet->getCell('A2')->getValue());
+            $this->assertSame(1030590916, (int) $sheet->getCell('B2')->getValue());
         } finally {
             @unlink($path);
         }

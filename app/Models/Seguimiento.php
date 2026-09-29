@@ -111,11 +111,29 @@
          */
         public function getTiempoTotalVigenteDiasAttribute(): ?int
         {
-            $value = $this->tiempo_total_calendario_dias
-                ?? $this->tiempo_total_ejecucion_dias
-                ?? $this->tiempo_ejecucion_dias;
+            $values = [
+                $this->tiempo_total_calendario_dias,
+                $this->tiempo_total_ejecucion_dias,
+                $this->tiempo_ejecucion_dias,
+            ];
 
-            return $value === null ? null : (int) $value;
+            // Algunos registros antiguos tienen un total derivado en cero aunque
+            // conservan un plazo inicial válido. Cero solo gana si no existe
+            // ningún valor positivo en la cadena de prioridad.
+            $fallback = null;
+            foreach ($values as $days) {
+                if ($days === null) {
+                    continue;
+                }
+
+                $days = (int) $days;
+                $fallback ??= $days;
+                if ($days > 0) {
+                    return $days;
+                }
+            }
+
+            return $fallback;
         }
     
         protected static function booted()

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Exports\SeguimientoExport;
+use App\Exports\SeguimientoExecutiveExport;
 use App\Models\Seguimiento;
 use App\Services\SeguimientoFilterService;
 use Illuminate\Database\Schema\Blueprint;
@@ -161,8 +162,11 @@ class SeguimientoFilterServiceTest extends TestCase
             'estado_contrato_id' => '["1"]',
         ]);
 
-        $export = new SeguimientoExport($query->get());
+        $entries = $query->get();
+        $editable = new SeguimientoExport($entries);
+        $executive = new SeguimientoExecutiveExport($entries);
 
-        $this->assertSame(['101'], $export->collection()->pluck('cedula')->all());
+        $this->assertSame([11], $editable->collection()->pluck('id')->all());
+        $this->assertSame(['101'], $executive->collection()->pluck('cedula')->all());
     }
 }

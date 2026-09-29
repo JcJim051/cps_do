@@ -23,49 +23,7 @@ class SeguimientoTemplateExport implements WithMultipleSheets
         $sheets[] = new class implements FromCollection, WithHeadings, WithTitle {
             public function headings(): array
             {
-                // 🚨 CRÍTICO: Usamos 'cedula_o_nit' en lugar de 'persona_id' para la importación
-                return [
-                    'id',
-                    'cedula_o_nit',
-                    'tipo',
-                    'secretaria_id',
-                    'gerencia_id',
-                    'fuente_id',
-                    'estado_contrato_id',
-                    'anio',
-                    'numero_contrato',
-                    'fecha_acta_inicio',
-                    'fecha_finalizacion',
-                    'tiempo_ejecucion_dias',
-                    'valor_mensual',
-                    'valor_total',
-                    'aut_despacho',
-                    'aut_planeacion',
-                    'aut_administrativa',
-                    'aut_despacho_adicion',
-                    'aut_planeacion_adicion',
-                    'aut_administrativa_adicion',
-                    'fecha_aut_despacho',
-                    'fecha_aut_planeacion',
-                    'fecha_aut_administrativa',
-                    'fecha_aut_despacho_adicion',
-                    'fecha_aut_planeacion_adicion',
-                    'fecha_aut_administrativa_adicion',
-                    'adicion',
-                    'fecha_acta_inicio_adicion',
-                    'fecha_finalizacion_adicion',
-                    'tiempo_ejecucion_dias_adicion',
-                    'tiempo_total_ejecucion_dias',
-                    'valor_adicion',
-                    'valor_total_contrato',
-                    'evaluacion_id',
-                    'continua',
-                    'observaciones_contrato',
-                    
-                    // 'observaciones', //entrevista
-                    // 'fecha_entrevista',//entrevista
-                    // 'estado_id',//entrevista
-                ];
+                return SeguimientoExport::HEADINGS;
             }
             public function collection()
             {
