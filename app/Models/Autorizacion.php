@@ -45,6 +45,13 @@ class Autorizacion extends Model
         'fecha_aut_despacho_adicion', 'fecha_aut_planeacion_adicion', 'fecha_aut_administrativa_adicion',
         'estado_aprobacion', 'estado_aprobacion_adicion',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Autorizacion $seguimiento) {
+            app(\App\Services\SeguimientoAutorizacionService::class)->synchronize($seguimiento);
+        });
+    }
     // protected $fillable = [];
     // protected $hidden = [];
 

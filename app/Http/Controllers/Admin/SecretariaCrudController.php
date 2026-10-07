@@ -56,6 +56,12 @@ class SecretariaCrudController extends CrudController
             'type' => 'boolean',
             'options' => [0 => 'No', 1 => 'Sí'],
         ]);
+        CRUD::addColumn([
+            'name' => 'es_descentralizada',
+            'label' => 'Entidad descentralizada',
+            'type' => 'boolean',
+            'options' => [0 => 'No', 1 => 'Sí'],
+        ]);
     }
 
     /**
@@ -84,6 +90,12 @@ class SecretariaCrudController extends CrudController
             'label' => 'Incluir en auditoría SECOP departamental',
             'type' => 'checkbox',
             'hint' => 'Actívalo únicamente para el Departamento del Meta y sus entidades descentralizadas.',
+        ]);
+        CRUD::addField([
+            'name' => 'es_descentralizada',
+            'label' => 'Entidad descentralizada',
+            'type' => 'checkbox',
+            'hint' => 'Activa el salto automático de Autorización 1 a Autorización 3, también para adiciones.',
         ]);
 
         /**

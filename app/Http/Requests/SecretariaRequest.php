@@ -30,6 +30,7 @@ class SecretariaRequest extends FormRequest
             'nit_secop' => ['nullable', 'string', 'max:30'],
             'nombre_secop' => ['nullable', 'string', 'max:255'],
             'auditoria_secop_incluida' => ['boolean'],
+            'es_descentralizada' => ['boolean'],
         ];
     }
 

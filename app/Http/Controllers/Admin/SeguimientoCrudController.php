@@ -834,37 +834,12 @@ class SeguimientoCrudController extends CrudController
         CRUD::addField([
             'name' => 'script_autorizaciones',
             'type' => 'custom_html',
-            'value' => '
-                <script>
-                document.addEventListener("DOMContentLoaded", function() {
-                    console.log("Script de autorizaciones activo");
-        
-                    function bindFecha(autoName, fechaName) {
-                        const checkbox = document.querySelector("[name=\'" + autoName + "\']");
-                        const fechaInput = document.querySelector("[name=\'" + fechaName + "\']");
-        
-                        if (!checkbox || !fechaInput) {
-                            console.warn("No encontrados:", autoName, fechaName);
-                            return;
-                        }
-        
-                        checkbox.addEventListener("change", function() {
-                            console.log("Cambio detectado en:", autoName);
-        
-                            if (this.checked && !fechaInput.value) {
-                                const hoy = new Date().toISOString().split("T")[0];
-                                fechaInput.value = hoy;
-                                console.log("Fecha asignada:", hoy);
-                            }
-                        });
-                    }
-        
-                    bindFecha("aut_despacho", "fecha_aut_despacho");
-                    bindFecha("aut_planeacion", "fecha_aut_planeacion");
-                    bindFecha("aut_administrativa", "fecha_aut_administrativa");
-                });
-                </script>
-            ',
+            'value' => view('admin.seguimiento.authorization_sync_script', [
+                'decentralizedIds' => \App\Models\Secretaria::query()
+                    ->where('es_descentralizada', true)
+                    ->pluck('id')
+                    ->all(),
+            ])->render(),
         ]);
         
         

@@ -148,28 +148,7 @@
                     return;
                 }
 
-                if ($seguimiento->estado_contrato_id) {
-                    $estado = Estados::query()->find($seguimiento->estado_contrato_id)?->nombre;
-                    $estado = mb_strtoupper(trim((string) $estado));
-
-                    if ($estado === 'APROBADO') {
-                        // El estado manda sobre el valor false que envía un checkbox apagado.
-                        $seguimiento->aut_despacho = true;
-                        $seguimiento->fecha_aut_despacho ??= Carbon::now('America/Bogota')->toDateString();
-                    } elseif (in_array($estado, ['PENDIENTE', 'PENDIENTE APROBACIÓN', 'CAMBIO'], true)) {
-                        $seguimiento->aut_despacho = false;
-                        $seguimiento->fecha_aut_despacho = null;
-                    }
-                }
-
-                $adicion = mb_strtoupper(trim((string) $seguimiento->adicion));
-                if ($adicion === 'SI') {
-                    $seguimiento->aut_despacho_adicion = true;
-                    $seguimiento->fecha_aut_despacho_adicion ??= Carbon::now('America/Bogota')->toDateString();
-                } elseif ($adicion === 'NO') {
-                    $seguimiento->aut_despacho_adicion = false;
-                    $seguimiento->fecha_aut_despacho_adicion = null;
-                }
+                app(\App\Services\SeguimientoAutorizacionService::class)->synchronize($seguimiento);
     
                 // --- tiempo ejecución contrato ---
                 if (

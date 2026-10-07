@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Estados;
 use App\Models\GoogleIntegration;
+use App\Models\Autorizacion;
 use App\Models\PrevalidacionContractual;
 use App\Models\PrevalidacionFuente;
 use App\Models\Seguimiento;
@@ -36,6 +37,10 @@ class PrevalidacionContractualTest extends TestCase
         Schema::create('gerencias', function (Blueprint $t) {
             $t->id(); $t->string('nombre'); $t->unsignedBigInteger('secretaria_id'); $t->timestamps();
         });
+        Schema::create('secretarias', function (Blueprint $t) {
+            $t->id(); $t->string('nombre'); $t->string('convencion')->nullable();
+            $t->boolean('es_descentralizada')->default(false); $t->timestamps();
+        });
         Schema::create('prevalidacion_fuentes', function (Blueprint $t) {
             $t->id(); $t->string('nombre'); $t->unsignedBigInteger('secretaria_id')->nullable(); $t->string('nit_entidad')->nullable();
             $t->string('spreadsheet_id'); $t->string('spreadsheet_url')->nullable(); $t->string('hoja'); $t->integer('fila_encabezados')->default(1);
@@ -56,7 +61,11 @@ class PrevalidacionContractualTest extends TestCase
             $t->integer('tiempo_ejecucion_dias')->nullable(); $t->decimal('valor_mensual', 15, 2)->nullable();
             $t->decimal('valor_total', 15, 2)->nullable(); $t->decimal('valor_total_contrato', 15, 2)->nullable();
             $t->boolean('aut_despacho')->default(false); $t->date('fecha_aut_despacho')->nullable();
+            $t->boolean('aut_planeacion')->default(false); $t->date('fecha_aut_planeacion')->nullable();
+            $t->boolean('aut_administrativa')->default(false); $t->date('fecha_aut_administrativa')->nullable();
             $t->boolean('aut_despacho_adicion')->default(false); $t->date('fecha_aut_despacho_adicion')->nullable();
+            $t->boolean('aut_planeacion_adicion')->default(false); $t->date('fecha_aut_planeacion_adicion')->nullable();
+            $t->boolean('aut_administrativa_adicion')->default(false); $t->date('fecha_aut_administrativa_adicion')->nullable();
             $t->string('adicion')->nullable(); $t->date('fecha_acta_inicio_adicion')->nullable();
             $t->date('fecha_finalizacion_adicion')->nullable(); $t->integer('tiempo_ejecucion_dias_adicion')->nullable();
             $t->integer('tiempo_total_ejecucion_dias')->nullable(); $t->decimal('valor_adicion', 15, 2)->nullable();
@@ -131,6 +140,101 @@ class PrevalidacionContractualTest extends TestCase
 
         $this->assertTrue($tracking->fresh()->aut_despacho);
         $this->assertSame($existingDate, $tracking->fresh()->fecha_aut_despacho->toDateString());
+    }
+
+    public function test_autorizacion_uno_actualiza_el_estado_en_ambos_sentidos(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+        $approved = Estados::where('nombre', 'APROBADO')->firstOrFail();
+        $pending = Estados::where('nombre', 'PENDIENTE APROBACIÓN')->firstOrFail();
+
+        $tracking = Seguimiento::create(['persona_id' => 1, 'tipo' => 'contrato', 'estado_contrato_id' => $pending->id]);
+        $authorization = Autorizacion::findOrFail($tracking->id);
+        $authorization->aut_despacho = true;
+        $authorization->save();
+
+        $tracking->refresh();
+        $this->assertSame($approved->id, $tracking->estado_contrato_id);
+        $this->assertNotNull($tracking->fecha_aut_despacho);
+
+        $authorization->refresh();
+        $authorization->aut_despacho = false;
+        $authorization->save();
+
+        $tracking->refresh();
+        $this->assertSame($pending->id, $tracking->estado_contrato_id);
+        $this->assertNull($tracking->fecha_aut_despacho);
+    }
+
+    public function test_descentralizada_salta_a_autorizacion_tres_y_la_retira_al_salir_de_aprobado(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('secretarias')->insert(['id' => 7, 'nombre' => 'IDERMETA', 'es_descentralizada' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $approved = Estados::where('nombre', 'APROBADO')->firstOrFail();
+        $pending = Estados::where('nombre', 'PENDIENTE APROBACIÓN')->firstOrFail();
+
+        $tracking = Seguimiento::create([
+            'persona_id' => 1,
+            'tipo' => 'contrato',
+            'secretaria_id' => 7,
+            'estado_contrato_id' => $approved->id,
+        ])->fresh();
+
+        $this->assertTrue($tracking->aut_despacho);
+        $this->assertTrue($tracking->aut_administrativa);
+        $this->assertNotNull($tracking->fecha_aut_administrativa);
+
+        $tracking->estado_contrato_id = $pending->id;
+        $tracking->save();
+        $tracking->refresh();
+
+        $this->assertFalse($tracking->aut_despacho);
+        $this->assertFalse($tracking->aut_administrativa);
+        $this->assertNull($tracking->fecha_aut_administrativa);
+    }
+
+    public function test_autorizaciones_de_adicion_descentralizada_se_sincronizan_desde_autorizaciones(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('secretarias')->insert(['id' => 8, 'nombre' => 'TURISMO', 'es_descentralizada' => true, 'created_at' => now(), 'updated_at' => now()]);
+
+        $tracking = Seguimiento::create([
+            'persona_id' => 1,
+            'tipo' => 'contrato',
+            'secretaria_id' => 8,
+            'adicion' => 'SI',
+        ])->fresh();
+
+        $this->assertTrue($tracking->aut_despacho_adicion);
+        $this->assertTrue($tracking->aut_administrativa_adicion);
+
+        $authorization = Autorizacion::findOrFail($tracking->id);
+        $authorization->aut_despacho_adicion = false;
+        $authorization->save();
+        $tracking->refresh();
+
+        $this->assertFalse($tracking->aut_despacho_adicion);
+        $this->assertFalse($tracking->aut_administrativa_adicion);
+        $this->assertNull($tracking->fecha_aut_administrativa_adicion);
+    }
+
+    public function test_actualizacion_secop_no_genera_autorizaciones(): void
+    {
+        DB::table('personas')->insert(['id' => 1, 'nombre_contratista' => 'Persona', 'cedula_o_nit' => '1', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('secretarias')->insert(['id' => 9, 'nombre' => 'AIM', 'es_descentralizada' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $approved = Estados::where('nombre', 'APROBADO')->firstOrFail();
+
+        $tracking = new Seguimiento([
+            'persona_id' => 1,
+            'tipo' => 'contrato',
+            'secretaria_id' => 9,
+            'estado_contrato_id' => $approved->id,
+        ]);
+        $tracking->skipAutoCalculation()->save();
+        $tracking->refresh();
+
+        $this->assertFalse($tracking->aut_despacho);
+        $this->assertFalse($tracking->aut_administrativa);
     }
 
     public function test_adicion_manual_activa_autorizacion_uno_y_no_la_retira(): void
