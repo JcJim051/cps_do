@@ -79,12 +79,23 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
-    state.addEventListener('change', function () {
+    const handleStateChange = function () {
         if (syncing) return;
         syncing = true;
         syncFromState();
         syncing = false;
-    });
+    };
+
+    // Los campos select2 emiten su cambio mediante jQuery. Escuchar ese
+    // evento garantiza que la reacción visual ocurra al escoger el estado,
+    // no solamente cuando el valor se modifica desde código nativo.
+    if (window.jQuery) {
+        window.jQuery(state)
+            .off('change.authorizationSync')
+            .on('change.authorizationSync', handleStateChange);
+    } else {
+        state.addEventListener('change', handleStateChange);
+    }
 
     authorization1.addEventListener('change', function () {
         if (syncing) return;
