@@ -69,14 +69,9 @@ class GoogleSheetsService
                 // La revocación remota es de mejor esfuerzo; siempre se elimina la sesión local.
             }
         }
-        $integration?->update([
-            'account_email' => null,
-            'access_token' => null,
-            'refresh_token' => null,
-            'token_expires_at' => null,
-            'scopes' => null,
-            'connected_at' => null,
-        ]);
+        if ($integration) {
+            $this->clearAuthorization($integration);
+        }
     }
 
     public function values(string $spreadsheetId, string $sheet, int $headerRow = 1): array
@@ -369,12 +364,23 @@ class GoogleSheetsService
         }
 
         if (!$integration->access_token || !$integration->token_expires_at || $integration->token_expires_at->lte(now()->addMinutes(2))) {
-            $payload = Http::asForm()->timeout(20)->post(self::TOKEN_URL, [
+            $response = Http::asForm()->timeout(20)->post(self::TOKEN_URL, [
                 'client_id' => $this->clientId(),
                 'client_secret' => $this->clientSecret(),
                 'refresh_token' => $integration->refresh_token,
                 'grant_type' => 'refresh_token',
-            ])->throw()->json();
+            ]);
+
+            if ($response->failed()) {
+                if ($response->status() === 400 && $response->json('error') === 'invalid_grant') {
+                    $this->clearAuthorization($integration);
+                    throw new \RuntimeException('La autorización de Google venció o fue revocada. Vuelve a conectar la cuenta desde Configurar OAuth.');
+                }
+
+                $response->throw();
+            }
+
+            $payload = $response->json();
 
             $integration->update([
                 'access_token' => $payload['access_token'],
@@ -383,6 +389,18 @@ class GoogleSheetsService
         }
 
         return Http::withToken($integration->fresh()->access_token)->acceptJson()->asJson()->timeout(30);
+    }
+
+    private function clearAuthorization(GoogleIntegration $integration): void
+    {
+        $integration->update([
+            'account_email' => null,
+            'access_token' => null,
+            'refresh_token' => null,
+            'token_expires_at' => null,
+            'scopes' => null,
+            'connected_at' => null,
+        ]);
     }
 
     private function clientId(): string

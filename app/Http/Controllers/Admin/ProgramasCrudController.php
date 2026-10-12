@@ -2,16 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Requests\ProgramasRequest;
 use Backpack\CRUD\app\Http\Controllers\CrudController;
 use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
-use App\Http\Requests\ProgramaRequest;
-use App\Imports\ProgramaImport;
-use App\Exports\ProgramaTemplateExport;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Facades\Excel;
-use Alert;
 
 
 
@@ -23,9 +15,6 @@ use Alert;
 class ProgramasCrudController extends CrudController
 {
     use \Backpack\CRUD\app\Http\Controllers\Operations\ListOperation;
-    use \Backpack\CRUD\app\Http\Controllers\Operations\CreateOperation;
-    use \Backpack\CRUD\app\Http\Controllers\Operations\UpdateOperation;
-    use \Backpack\CRUD\app\Http\Controllers\Operations\DeleteOperation;
     use \Backpack\CRUD\app\Http\Controllers\Operations\ShowOperation;
     
 
@@ -43,18 +32,10 @@ class ProgramasCrudController extends CrudController
 
         $user = backpack_user();
 
-        // 🚫 Bloqueo total por defecto
+        // Los datos principales se administran exclusivamente en Google Sheets.
         $this->crud->denyAccess(['list', 'show', 'create', 'update', 'delete']);
 
-        // ✏️ PROGRAMAS (8) → crear y editar
-        if (in_array($user->role_id, [8, 1])) {
-            $this->crud->allowAccess(['list', 'show', 'create', 'update', 'delete']);
-            $this->crud->denyAccess(['delete']);
-            return;
-        }
-
-        // 👀 ADMIN (1) y DIANA (2) → SOLO VER
-        if (in_array($user->role_id, [2])) {
+        if ($user && ($user->hasAnyRole(['admin', 'diana', 'programas']) || in_array((int) $user->role_id, [1, 2, 8], true))) {
             $this->crud->allowAccess(['list', 'show']);
             return;
         }
@@ -72,12 +53,9 @@ class ProgramasCrudController extends CrudController
      */
     protected function setupListOperation(): void
     {
-        /*
-        |--------------------------------------------------------------------------
-        | EXPORTACIONES
-        |--------------------------------------------------------------------------
-        */
-        $this->crud->addButtonFromView('top', 'import', 'import_seguimientos_button', 'end');
+        CRUD::addClause('where', 'origen', 'google_sheets');
+        CRUD::addClause('where', 'presente_en_origen', true);
+        $this->crud->addButtonFromView('top', 'dashboard', 'programas_dashboard', 'beginning');
         $this->crud->enableExportButtons();
     
         /*
@@ -94,15 +72,15 @@ class ProgramasCrudController extends CrudController
             'name'  => 'municipio',
             'label' => 'Municipio',
         ]);
+
+        CRUD::addColumn([
+            'name'  => 'perfil',
+            'label' => 'Perfil',
+        ]);
     
         CRUD::addColumn([
             'name'  => 'institucion',
             'label' => 'Institución',
-        ]);
-    
-        CRUD::addColumn([
-            'name'  => 'sede',
-            'label' => 'Sede',
         ]);
     
         CRUD::addColumn([
@@ -116,18 +94,8 @@ class ProgramasCrudController extends CrudController
         ]);
     
         CRUD::addColumn([
-            'name'  => 'contacto',
-            'label' => 'Contacto',
-        ]);
-    
-        CRUD::addColumn([
-            'name'  => 'ref_1',
-            'label' => 'Ref 1',
-        ]);
-    
-        CRUD::addColumn([
-            'name'  => 'ref_2',
-            'label' => 'Ref 2',
+            'name'  => 'estado',
+            'label' => 'Estado',
         ]);
     
         /*
@@ -164,7 +132,7 @@ class ProgramasCrudController extends CrudController
             'Granada' => 'Granada',
             'Guamal' => 'Guamal',
             'La Macarena' => 'La Macarena',
-            'La Uribe' => 'La Uribe',
+            'Uribe' => 'Uribe',
             'Lejanías' => 'Lejanías',
             'Mapiripán' => 'Mapiripán',
             'Mesetas' => 'Mesetas',
@@ -191,6 +159,22 @@ class ProgramasCrudController extends CrudController
             'label' => 'Institución',
         ], false, fn ($value) =>
             CRUD::addClause('where', 'institucion', 'LIKE', "%{$value}%")
+        );
+
+        CRUD::addFilter([
+            'name'  => 'perfil',
+            'type'  => 'text',
+            'label' => 'Perfil',
+        ], false, fn ($value) =>
+            CRUD::addClause('where', 'perfil', 'LIKE', "%{$value}%")
+        );
+
+        CRUD::addFilter([
+            'name'  => 'estado',
+            'type'  => 'text',
+            'label' => 'Estado',
+        ], false, fn ($value) =>
+            CRUD::addClause('where', 'estado', 'LIKE', "%{$value}%")
         );
     
         // Sede
@@ -248,170 +232,6 @@ class ProgramasCrudController extends CrudController
         );
     }
 
-    public function importForm()
-    {
-        $this->crud->hasAccessOrFail('create');
-
-        $this->data['crud'] = $this->crud;
-        $this->data['title'] = 'Importar Programas';
-        $this->data['importFailures'] = session('importFailures', []);
-
-        return view('admin.programas.import', $this->data);
-    }
-
-    public function import(Request $request)
-    {
-        $this->crud->hasAccessOrFail('create');
-
-        $request->validate([
-            'file' => 'required|file|mimes:xls,xlsx,csv',
-        ], [
-            'file.required' => 'Debe seleccionar un archivo.',
-            'file.mimes' => 'El archivo debe ser de tipo Excel (.xls, .xlsx) o CSV.',
-        ]);
-
-        $import = new ProgramaImport();
-
-        try {
-            Excel::import($import, $request->file('file'));
-            $failures = $import->logicFailures;
-
-            if (empty($failures)) {
-                Alert::success('¡Importación de Programas completada exitosamente!')->flash();
-                return redirect($this->crud->route);
-            }
-
-            Alert::warning('Importación finalizada con '.count($failures).' fila(s) no importada(s). Revise el detalle.')->flash();
-            return redirect($this->crud->route.'/import')->with('importFailures', $failures);
-        } catch (\Throwable $e) {
-            Log::error('Error fatal en importación de Programas: '.$e->getMessage());
-            Alert::error('Ocurrió un error en el servidor durante la importación.')->flash();
-            return back();
-        }
-    }
-
-    public function downloadTemplate()
-    {
-        return Excel::download(new ProgramaTemplateExport(), 'plantilla_programas.xlsx');
-    }
-    
-
-
-    /**
-     * Define what happens when the Create operation is loaded.
-     * 
-     * @see https://backpackforlaravel.com/docs/crud-operation-create
-     * @return void
-     */
-    protected function setupCreateOperation(): void
-    {
-        CRUD::setValidation(ProgramaRequest::class);
-    
-        /*
-        |--------------------------------------------------------------------------
-        | FILA 1: Operador – Municipio – Institución
-        |--------------------------------------------------------------------------
-        */
-    
-        CRUD::field('operador')
-            ->label('Operador')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        CRUD::addField([
-            'name'    => 'municipio',
-            'label'   => 'Municipio',
-            'type'    => 'select2_from_array',
-            'options' => [
-                'Acacías' => 'Acacías',
-                'Barranca de Upía' => 'Barranca de Upía',
-                'Cabuyaro' => 'Cabuyaro',
-                'Castilla la Nueva' => 'Castilla la Nueva',
-                'Cubarral' => 'Cubarral',
-                'Cumaral' => 'Cumaral',
-                'El Calvario' => 'El Calvario',
-                'El Castillo' => 'El Castillo',
-                'El Dorado' => 'El Dorado',
-                'Fuente de Oro' => 'Fuente de Oro',
-                'Granada' => 'Granada',
-                'Guamal' => 'Guamal',
-                'La Macarena' => 'La Macarena',
-                'La Uribe' => 'La Uribe',
-                'Lejanías' => 'Lejanías',
-                'Mapiripán' => 'Mapiripán',
-                'Mesetas' => 'Mesetas',
-                'Puerto Concordia' => 'Puerto Concordia',
-                'Puerto Gaitán' => 'Puerto Gaitán',
-                'Puerto Lleras' => 'Puerto Lleras',
-                'Puerto López' => 'Puerto López',
-                'Puerto Rico' => 'Puerto Rico',
-                'Restrepo' => 'Restrepo',
-                'San Carlos de Guaroa' => 'San Carlos de Guaroa',
-                'San Juan de Arama' => 'San Juan de Arama',
-                'San Juanito' => 'San Juanito',
-                'San Martín' => 'San Martín',
-                'Villavicencio' => 'Villavicencio',
-                'Vista Hermosa' => 'Vista Hermosa',
-            ],
-            'allows_null' => false,
-            'wrapper' => ['class' => 'form-group col-md-4'],
-        ]);
-    
-        CRUD::field('institucion')
-            ->label('Institución')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        /*
-        |--------------------------------------------------------------------------
-        | FILA 2: Sede – Nombre completo – Cédula
-        |--------------------------------------------------------------------------
-        */
-    
-        CRUD::field('sede')
-            ->label('Sede')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        CRUD::field('nombre_apellidos')
-            ->label('Nombre y Apellidos')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        CRUD::field('cedula')
-            ->label('Cédula')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        /*
-        |--------------------------------------------------------------------------
-        | FILA 3: Contacto – Referencia 1 – Referencia 2
-        |--------------------------------------------------------------------------
-        */
-    
-        CRUD::field('contacto')
-            ->label('Contacto')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        CRUD::field('ref_1')
-            ->label('Referencia 1')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        CRUD::field('ref_2')
-            ->label('Referencia 2')
-            ->wrapper(['class' => 'form-group col-md-4']);
-    
-        /*
-        |--------------------------------------------------------------------------
-        | FILA 4: Foto
-        |--------------------------------------------------------------------------
-        */
-    
-        CRUD::addField([
-            'name'    => 'foto',
-            'label'   => 'Foto',
-            'type'    => 'upload',
-            'upload'  => true,
-            'disk'    => 'public',
-            'wrapper' => ['class' => 'form-group col-md-4'],
-        ]);
-    }
-    
     protected function setupShowOperation(): void
 {
     $this->crud->set('show.setFromDb', false);
@@ -432,14 +252,15 @@ class ProgramasCrudController extends CrudController
             */
             if ($entry->foto) {
                 $fotoUrl = asset('storage/' . $entry->foto);
+                $fotoUrlEscaped = e($fotoUrl);
 
                 $html .= '
                     <div class="mb-2 col-md-3 d-flex align-items-stretch">
                         <div class="border-0 shadow-sm card w-100 h-100">
                             <div class="text-center card-body d-flex flex-column justify-content-center">
                                 <small class="text-muted">Foto</small>
-                                <a href="'.$fotoUrl.'" target="_blank" class="mt-2 d-block">
-                                    <img src="'.$fotoUrl.'" class="rounded img-fluid"
+                                <a href="'.$fotoUrlEscaped.'" target="_blank" class="mt-2 d-block">
+                                    <img src="'.$fotoUrlEscaped.'" class="rounded img-fluid"
                                          style="max-height:250px; object-fit:contain; cursor:pointer;">
                                 </a>
                             </div>
@@ -457,6 +278,7 @@ class ProgramasCrudController extends CrudController
             $campos = [
                 'Operador'            => $entry->operador,
                 'Municipio'           => $entry->municipio,
+                'Perfil'              => $entry->perfil,
                 'Institución'         => $entry->institucion,
                 'Sede'                => $entry->sede,
                 'Nombre y Apellidos'  => $entry->nombre_apellidos,
@@ -464,15 +286,17 @@ class ProgramasCrudController extends CrudController
                 'Contacto'            => $entry->contacto,
                 'Referencia 1'        => $entry->ref_1,
                 'Referencia 2'        => $entry->ref_2,
+                'Estado'              => $entry->estado,
             ];
 
             foreach ($campos as $label => $valor) {
+                $displayValue = $valor ? e($valor) : '<span class="text-muted">N/A</span>';
                 $html .= '
                     <div class="mb-2 col-md-4">
                         <div class="border-0 shadow-sm card h-100">
                             <div class="px-3 py-2 card-body">
                                 <small class="text-muted">'.$label.'</small>
-                                <div class="fw-semibold">'.($valor ?: '<span class="text-muted">N/A</span>').'</div>
+                                <div class="fw-semibold">'.$displayValue.'</div>
                             </div>
                         </div>
                     </div>';
@@ -486,16 +310,4 @@ class ProgramasCrudController extends CrudController
         'escaped' => false,
     ]);
 }
-
-
-    /**
-     * Define what happens when the Update operation is loaded.
-     * 
-     * @see https://backpackforlaravel.com/docs/crud-operation-update
-     * @return void
-     */
-    protected function setupUpdateOperation()
-    {
-        $this->setupCreateOperation();
-    }
 }

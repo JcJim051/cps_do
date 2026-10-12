@@ -84,7 +84,7 @@
 )
 <x-backpack::menu-item
     title="Programas"
-    icon="la la-question"
-    :link="backpack_url('programas')"
+    icon="la la-chart-bar"
+    :link="backpack_url('programas/dashboard')"
 />
 @endif

@@ -21,17 +21,19 @@
     @endif
 @endforeach
 
-<div class="alert alert-warning border-warning mb-3">
-    <div class="d-flex flex-wrap justify-content-between align-items-center">
-        <div class="mr-3">
-            <strong><i class="la la-exclamation-triangle"></i> ¿Google muestra “Error 403: access_denied”?</strong><br>
-            <span>Si la aplicación está en modo Pruebas, agrega primero la cuenta de Gmail que vas a conectar en <strong>Audience → Test users</strong> del mismo proyecto que generó estas credenciales.</span>
+@unless($connected)
+    <div class="alert alert-warning border-warning mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center">
+            <div class="mr-3">
+                <strong><i class="la la-exclamation-triangle"></i> ¿Google muestra “Error 403: access_denied”?</strong><br>
+                <span>Si la aplicación está en modo Pruebas, agrega primero la cuenta de Gmail que vas a conectar en <strong>Audience → Test users</strong> del mismo proyecto que generó estas credenciales.</span>
+            </div>
+            <a class="btn btn-warning mt-2 mt-lg-0" href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">
+                Abrir Audience en Google <i class="la la-external-link-alt"></i>
+            </a>
         </div>
-        <a class="btn btn-warning mt-2 mt-lg-0" href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">
-            Abrir Audience en Google <i class="la la-external-link-alt"></i>
-        </a>
     </div>
-</div>
+@endunless
 
 <div class="row">
     <div class="col-lg-5 mb-4">
@@ -153,11 +155,14 @@
                             <strong>{{ $integration->account_email ?: 'Cuenta de Google' }}</strong><br>
                             <small class="text-muted">Conectada {{ $integration->connected_at?->format('d/m/Y H:i') }}</small>
                         </div>
-                        <form method="POST" action="{{ route('prevalidacion.google.disconnect') }}" onsubmit="return confirm('¿Desconectar esta cuenta de Google? Las credenciales OAuth se conservarán.');">
-                            @csrf
-                            @method('DELETE')
-                            <button class="btn btn-outline-danger"><i class="la la-unlink"></i> Desconectar cuenta</button>
-                        </form>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a class="btn btn-danger" href="{{ route('prevalidacion.google.redirect') }}"><i class="la la-google"></i> Reautorizar cuenta</a>
+                            <form method="POST" action="{{ route('prevalidacion.google.disconnect') }}" onsubmit="return confirm('¿Desconectar esta cuenta de Google? Las credenciales OAuth se conservarán.');">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn btn-outline-danger"><i class="la la-unlink"></i> Desconectar cuenta</button>
+                            </form>
+                        </div>
                     </div>
                 @elseif($configured)
                     <p class="mb-3">Las credenciales están listas. Ahora inicia sesión con la cuenta que tiene acceso a los cuadros de Google Sheets.</p>

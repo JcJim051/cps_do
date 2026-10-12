@@ -110,10 +110,9 @@ Route::group([
         ->name('autorizacion.togglePlaneacion');
     Route::post('autorizacion/{id}/toggle-autorizacion', 'AutorizacionCrudController@toggleAutorizacion')
         ->name('autorizacion.toggleAutorizacion');
+    Route::get('programas/dashboard', 'ProgramasDashboardController@index')->name('programas.dashboard');
+    Route::post('programas/sincronizar', 'ProgramasDashboardController@sync')->name('programas.sync');
     Route::crud('programas', 'ProgramasCrudController');
-    Route::get('programas/import', 'ProgramasCrudController@importForm')->name('programas.importForm');
-    Route::post('programas/import', 'ProgramasCrudController@import')->name('programas.import');
-    Route::get('programas/template', 'ProgramasCrudController@downloadTemplate')->name('programas.downloadTemplate');
     Route::crud('equipo-campania', 'EquipoCampaniaCrudController');
 
     Route::group(['middleware' => ['role:coordinador,coordinador_comite']], function () {

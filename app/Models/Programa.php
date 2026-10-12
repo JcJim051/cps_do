@@ -13,7 +13,9 @@ class Programa extends Model
     protected $table = 'programas';
 
     protected $fillable = [
+        'external_id',
         'operador',
+        'perfil',
         'municipio',
         'institucion',
         'sede',
@@ -22,8 +24,23 @@ class Programa extends Model
         'contacto',
         'ref_1',
         'ref_2',
+        'estado',
+        'fila_origen',
+        'origen',
+        'presente_en_origen',
+        'hash_origen',
+        'ultima_sincronizacion_at',
         'foto',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'presente_en_origen' => 'boolean',
+            'fila_origen' => 'integer',
+            'ultima_sincronizacion_at' => 'datetime',
+        ];
+    }
 
       // 🔥 ESTO ES OBLIGATORIO PARA UPLOAD
       public function setFotoAttribute($value)
