@@ -4,7 +4,7 @@
     <div class="card-body py-3">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div><h2 class="h4 mb-0">Sincronización Seguimientos ↔ SECOP</h2><small class="text-muted">Vista previa y aplicación controlada · vigencia 2026</small></div>
-            <button type="button" class="btn btn-primary btn-sm text-nowrap" id="link-exact" @disabled($conciliationRun?->isActive())>
+            <button type="button" class="btn btn-primary btn-sm text-nowrap" id="link-exact" @disabled($conciliationRun?->isActive() || $auditScope['faltantes'] !== [])>
                 <i class="la {{ $conciliationRun?->isActive() ? 'la-spinner la-spin' : 'la-link' }}"></i>
                 <span>{{ $conciliationRun?->isActive() ? 'Conciliación en curso' : 'Vincular coincidencias exactas' }}</span>
             </button>
@@ -20,6 +20,15 @@
 </div>
 
 <div class="alert alert-info {{ $conciliationRun?->isActive() ? '' : 'd-none' }} process-status" id="link-exact-progress" role="status"></div>
+
+@if($auditScope['faltantes'] !== [])
+<div class="alert alert-warning py-2 small">
+    <i class="la la-exclamation-triangle"></i>
+    <strong>La vinculación masiva está bloqueada.</strong>
+    Completa el NIT SECOP de las {{ count($auditScope['faltantes']) }} entidades departamentales pendientes antes de iniciar un lote nuevo.
+    <a href="{{ backpack_url('secretaria') }}" class="ms-1">Parametrizar entidades</a>
+</div>
+@endif
 
 @if($summary)
 <div class="alert alert-info d-flex flex-wrap gap-3">
@@ -201,7 +210,10 @@
                 }),
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'No fue posible iniciar la conciliación.');
+            if (!response.ok) {
+                const validationMessage = Object.values(data.errors || {}).flat()[0];
+                throw new Error(validationMessage || data.message || 'No fue posible iniciar la conciliación.');
+            }
             render(data.lote);
             schedulePoll();
         } catch (error) {
@@ -233,6 +245,16 @@
         const active = run.activo;
         const finished = run.estado === 'finalizado';
         progress.className = `alert ${finished ? (run.errores ? 'alert-warning' : 'alert-success') : (run.estado === 'fallido' ? 'alert-danger' : 'alert-info')}`;
+        const results = run.resultados || {};
+        const reasons = [
+            ['Sin contrato encontrado', results.sin_contrato_encontrado || 0],
+            ['Varias coincidencias', results.varias_coincidencias || 0],
+            ['Entidad sin parametrizar', results.entidad_sin_parametrizar || 0],
+            ['Entidad o documento diferente', results.entidad_o_documento_diferente || 0],
+            ['Contrato ya utilizado', results.contrato_utilizado || 0],
+        ].filter(item => item[1] > 0)
+         .map(item => `<span class="badge bg-light text-dark border">${item[0]}: ${item[1]}</span>`)
+         .join(' ');
         progress.innerHTML = `
             <div class="d-flex justify-content-between align-items-center gap-3 mb-1">
                 <strong>${statusLabel(run.estado)}</strong>
@@ -240,6 +262,7 @@
             </div>
             <div class="progress mb-2" style="height:8px"><div class="progress-bar" style="width:${run.porcentaje}%"></div></div>
             <div>${run.personas_procesadas} de ${run.total_personas} personas · ${run.coincidencias_exactas} coincidencias exactas · ${run.vinculos_creados} vínculos · ${run.errores} errores</div>
+            <div class="small mt-1"><strong>${run.seguimientos_revisados || 0}</strong> Seguimientos sin vínculo revisados${reasons ? ` · ${reasons}` : ''}</div>
             <small>Última actualización: ${run.actualizado || '—'}.${active ? ' Puedes salir de esta página; el proceso continúa en el servidor.' : ''}</small>
             ${run.ultimo_error ? `<details class="mt-1 small text-danger"><summary>Ver detalle del último error</summary><div class="mt-1 text-break">${escapeHtml(run.ultimo_error)}</div></details>` : ''}`;
         progress.querySelector('.btn-close')?.addEventListener('click', () => progress.classList.add('d-none'));
@@ -258,7 +281,11 @@
         return node.innerHTML;
     }
 
-    if (@json($conciliationRun?->isActive() ?? false)) poll();
+    const initialRun = @json($conciliationStatus);
+    if (initialRun) {
+        render(initialRun);
+        if (initialRun.activo) schedulePoll();
+    }
 })();
 
 (() => {

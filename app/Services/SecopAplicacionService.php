@@ -186,6 +186,15 @@ class SecopAplicacionService
         } elseif ($i->fecha_fin) {
             $values['fecha_finalizacion'] = $i->fecha_fin->format('Y-m-d'); $origins['fecha_finalizacion'] = 'SECOP';
         }
+        if ($baseDays !== null && !$hasAddition) {
+            // En un contrato sin modificación, los totales dependen directamente
+            // del plazo inicial. Actualizarlos evita que la tabla conserve un
+            // total histórico mientras el detalle ya muestra el plazo nuevo.
+            $values['tiempo_total_ejecucion_dias'] = (int) $baseDays;
+            $origins['tiempo_total_ejecucion_dias'] = 'Derivado';
+            $values['tiempo_total_calendario_dias'] = (int) $baseDays;
+            $origins['tiempo_total_calendario_dias'] = 'Derivado';
+        }
         if (($baseDays !== null || $addedDays > 0) && $source !== 'secop2') {
             $values['tiempo_total_ejecucion_dias'] = (int) ($baseDays ?? $s->tiempo_ejecucion_dias ?? 0) + $addedDays;
             $origins['tiempo_total_ejecucion_dias'] = 'Derivado';

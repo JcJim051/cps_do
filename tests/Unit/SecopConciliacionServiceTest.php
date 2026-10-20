@@ -105,6 +105,36 @@ class SecopConciliacionServiceTest extends TestCase
         $this->assertSame(0, $tracking->tiempo_total_vigente_dias);
     }
 
+    public function test_tiempo_vigente_sin_modificacion_prioriza_el_plazo_inicial_actualizado(): void
+    {
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'adicion' => 'NO',
+            'tiempo_ejecucion_dias' => 153,
+            'tiempo_total_ejecucion_dias' => 165,
+            'tiempo_total_calendario_dias' => null,
+        ]);
+
+        $this->assertSame(153, $tracking->tiempo_total_vigente_dias);
+    }
+
+    public function test_tiempo_vigente_con_modificacion_se_construye_desde_sus_componentes(): void
+    {
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'adicion' => 'SI',
+            'tiempo_ejecucion_dias' => 135,
+            'tiempo_ejecucion_dias_adicion' => 67,
+            'tiempo_extension_secop_dias' => 81,
+            'tiempo_suspension_dias' => 14,
+            'tiempo_total_ejecucion_dias' => 202,
+            'tiempo_total_calendario_dias' => 200,
+        ]);
+
+        $this->assertSame(216, $tracking->tiempo_total_vigente_dias);
+        $this->assertSame(202, $tracking->tiempo_total_ejecucion_vigente_dias);
+    }
+
     private function tracking(int $id, string $number, int $year): Seguimiento
     {
         $tracking = new Seguimiento([

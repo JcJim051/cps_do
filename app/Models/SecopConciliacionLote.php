@@ -14,6 +14,9 @@ class SecopConciliacionLote extends Model
         return [
             'iniciado_at' => 'datetime',
             'finalizado_at' => 'datetime',
+            'secretaria_ids' => 'array',
+            'nit_entidades' => 'array',
+            'resultados' => 'array',
         ];
     }
 

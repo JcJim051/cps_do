@@ -7,15 +7,26 @@ use App\Models\ProgramaFuente;
 use App\Services\GoogleSheetsService;
 use App\Services\ProgramasGoogleSyncService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 
 class ProgramasGoogleSyncServiceTest extends TestCase
 {
+    private string $originalDatabaseConnection;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->originalDatabaseConnection = (string) config('database.default');
+        config([
+            'database.default' => 'sqlite',
+            'database.connections.sqlite.database' => ':memory:',
+        ]);
+        DB::purge('sqlite');
+        DB::reconnect('sqlite');
 
         Schema::create('programas', function (Blueprint $table) {
             $table->id();
@@ -66,6 +77,8 @@ class ProgramasGoogleSyncServiceTest extends TestCase
     {
         Schema::dropIfExists('programa_fuentes');
         Schema::dropIfExists('programas');
+        DB::purge('sqlite');
+        config(['database.default' => $this->originalDatabaseConnection]);
         parent::tearDown();
     }
 

@@ -27,6 +27,7 @@ class SecopSincronizacionController extends Controller
         $query = $this->query($request, $year)->with(['seguimiento.persona', 'seguimiento.secretaria', 'seguimiento.estadoContrato', 'ultimaInstantanea']);
         $links = $query->get();
         $summary = $request->boolean('simular') ? $service->run($links, 'simulacion', backpack_user()?->id, true) : null;
+        $conciliationRun = SecopConciliacionLote::query()->latest('id')->first();
         $auditRuns = SecopAuditoriaLote::query()->latest('id')->limit(12)->get();
         $latestAuditRun = $auditRuns->first();
         $requestedAuditId = $request->integer('auditoria_lote');
@@ -53,7 +54,8 @@ class SecopSincronizacionController extends Controller
             'links' => $links, 'summary' => $summary, 'year' => $year,
             'secretarias' => Secretaria::query()->orderBy('nombre')->get(),
             'estados' => \App\Models\Estados::query()->orderBy('nombre')->get(),
-            'conciliationRun' => SecopConciliacionLote::query()->latest('id')->first(),
+            'conciliationRun' => $conciliationRun,
+            'conciliationStatus' => $conciliationRun ? $this->serializeRun($conciliationRun) : null,
             'auditRun' => $auditRun,
             'latestAuditRun' => $latestAuditRun,
             'auditRuns' => $auditRuns,
@@ -176,8 +178,10 @@ class SecopSincronizacionController extends Controller
             'activo' => $lote->isActive(),
             'total_personas' => $lote->total_personas,
             'personas_procesadas' => $lote->personas_procesadas,
+            'seguimientos_revisados' => $lote->seguimientos_revisados,
             'coincidencias_exactas' => $lote->coincidencias_exactas,
             'vinculos_creados' => $lote->vinculos_creados,
+            'resultados' => $lote->resultados ?? [],
             'errores' => $lote->errores,
             'ultimo_error' => $lote->ultimo_error,
             'porcentaje' => $lote->total_personas > 0

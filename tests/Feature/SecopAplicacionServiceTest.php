@@ -126,4 +126,40 @@ class SecopAplicacionServiceTest extends TestCase
         $this->assertSame('En ejecución', $fresh->estado_secop);
         $this->assertSame('SECOP', $link->fresh()->origenes_campos['estado_contrato_id']);
     }
+
+    public function test_contrato_sin_adicion_actualiza_tambien_sus_totales_dependientes(): void
+    {
+        $tracking = Seguimiento::create([
+            'tipo' => 'contrato',
+            'tiempo_ejecucion_dias' => 165,
+            'tiempo_total_ejecucion_dias' => 165,
+        ]);
+        $link = SecopVinculo::create([
+            'seguimiento_id' => $tracking->id,
+            'fuente_secop' => 'secop2',
+            'identificador_externo' => 'sin-adicion',
+        ]);
+        SecopInstantanea::create([
+            'vinculo_id' => $link->id,
+            'estado' => 'En ejecución',
+            'fecha_inicio' => '2026-02-02',
+            'fecha_fin' => '2026-07-04',
+            'duracion_inicial_dias' => 153,
+            'dias_adicionados' => 0,
+            'marcacion_adicion' => false,
+            'hash' => 'sin-adicion',
+            'consultado_at' => now(),
+        ]);
+
+        app(SecopAplicacionService::class)->apply(
+            $link->fresh(['seguimiento', 'ultimaInstantanea']),
+            'prueba'
+        );
+
+        $fresh = $tracking->fresh();
+        $this->assertSame(153, $fresh->tiempo_ejecucion_dias);
+        $this->assertSame(153, $fresh->tiempo_total_ejecucion_dias);
+        $this->assertSame(153, $fresh->tiempo_total_calendario_dias);
+        $this->assertSame(153, $fresh->tiempo_total_vigente_dias);
+    }
 }

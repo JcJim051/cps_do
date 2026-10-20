@@ -79,7 +79,8 @@
                         <div class="contract-metric"><small>Valor mensual</small><strong>{{ $money($entry->valor_mensual) }}</strong></div>
                         <div class="contract-metric"><small>Valor de la adición</small><strong>{{ $money($entry->valor_adicion) }}</strong></div>
                         <div class="contract-metric"><small>Valor total vigente</small><strong>{{ $money($entry->valor_total_contrato) }}</strong></div>
-                        <div class="contract-metric"><small>Finalización vigente</small><strong>{{ $date($entry->fecha_finalizacion_adicion ?: $entry->fecha_finalizacion) }}</strong></div>
+                        <div class="contract-metric"><small>Finalización vigente</small><strong>{{ $date($entry->fecha_finalizacion_vigente) }}</strong></div>
+                        <div class="contract-metric"><small>Tiempo total vigente</small><strong>{{ $days($entry->tiempo_total_vigente_dias) }}</strong></div>
                     </div>
                 </div>
             </div>
@@ -96,7 +97,7 @@
                 @if($hasBreakdown)
                     <div class="contract-equation mt-3 d-flex flex-wrap justify-content-between gap-2">
                         <span><strong>{{ $entry->tiempo_extension_secop_dias }}</strong> días de extensión = <strong>{{ $entry->tiempo_ejecucion_dias_adicion ?? 0 }}</strong> de adición + <strong>{{ $entry->tiempo_suspension_dias ?? 0 }}</strong> de suspensión</span>
-                        <span>Ejecución efectiva: <strong>{{ $entry->tiempo_total_ejecucion_dias ?? '—' }}</strong> · Calendario: <strong>{{ $entry->tiempo_total_calendario_dias ?? '—' }}</strong></span>
+                        <span>Ejecución efectiva: <strong>{{ $entry->tiempo_total_ejecucion_vigente_dias ?? '—' }}</strong> · Calendario: <strong>{{ $entry->tiempo_total_vigente_dias ?? '—' }}</strong></span>
                     </div>
                 @else
                     <div class="alert alert-light border mt-3 mb-0">La composición aparecerá después de sincronizar el contrato con SECOP.</div>

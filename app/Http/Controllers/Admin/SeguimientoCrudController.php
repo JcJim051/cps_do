@@ -336,8 +336,8 @@ class SeguimientoCrudController extends CrudController
                     if ($calendario === null) return '';
 
                     $html = '<strong>'.e($calendario).' días</strong>';
-                    $efectivo = $entry->tiempo_total_ejecucion_dias;
-                    if ($entry->tiempo_total_calendario_dias !== null && $efectivo !== null && (int) $efectivo !== $calendario) {
+                    $efectivo = $entry->tiempo_total_ejecucion_vigente_dias;
+                    if ($entry->tiene_modificacion_vigente && $efectivo !== null && (int) $efectivo !== $calendario) {
                         $html .= '<br><small class="text-muted">Ejecución: '.e((int) $efectivo).' días</small>';
                     }
                     return $html;

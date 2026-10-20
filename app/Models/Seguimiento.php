@@ -102,7 +102,24 @@
          */
         public function getFechaFinalizacionVigenteAttribute(): mixed
         {
-            return $this->fecha_finalizacion_adicion ?: $this->fecha_finalizacion;
+            return $this->tiene_modificacion_vigente
+                ? ($this->fecha_finalizacion_adicion ?: $this->fecha_finalizacion)
+                : $this->fecha_finalizacion;
+        }
+
+        /**
+         * Indica si existe una modificación contractual que deba afectar los
+         * valores vigentes mostrados. Evita que totales históricos obsoletos
+         * prevalezcan sobre el plazo inicial actualizado.
+         */
+        public function getTieneModificacionVigenteAttribute(): bool
+        {
+            return mb_strtoupper(trim((string) $this->adicion)) === 'SI'
+                || $this->fecha_finalizacion_adicion !== null
+                || (int) ($this->tiempo_ejecucion_dias_adicion ?? 0) > 0
+                || (int) ($this->tiempo_extension_secop_dias ?? 0) > 0
+                || (int) ($this->tiempo_suspension_dias ?? 0) > 0
+                || (float) ($this->valor_adicion ?? 0) > 0;
         }
 
         /**
@@ -111,10 +128,28 @@
          */
         public function getTiempoTotalVigenteDiasAttribute(): ?int
         {
+            $base = $this->tiempo_ejecucion_dias !== null
+                ? (int) $this->tiempo_ejecucion_dias
+                : null;
+
+            if (!$this->tiene_modificacion_vigente) {
+                return $base
+                    ?? ($this->tiempo_total_ejecucion_dias !== null ? (int) $this->tiempo_total_ejecucion_dias : null)
+                    ?? ($this->tiempo_total_calendario_dias !== null ? (int) $this->tiempo_total_calendario_dias : null);
+            }
+
+            if ($base !== null && $this->tiempo_extension_secop_dias !== null) {
+                return $base + max(0, (int) $this->tiempo_extension_secop_dias);
+            }
+
+            if ($base !== null && (int) ($this->tiempo_ejecucion_dias_adicion ?? 0) > 0) {
+                return $base + (int) $this->tiempo_ejecucion_dias_adicion;
+            }
+
             $values = [
                 $this->tiempo_total_calendario_dias,
                 $this->tiempo_total_ejecucion_dias,
-                $this->tiempo_ejecucion_dias,
+                $base,
             ];
 
             // Algunos registros antiguos tienen un total derivado en cero aunque
@@ -134,6 +169,28 @@
             }
 
             return $fallback;
+        }
+
+        /** Tiempo realmente ejecutable, sin contar días de suspensión. */
+        public function getTiempoTotalEjecucionVigenteDiasAttribute(): ?int
+        {
+            $base = $this->tiempo_ejecucion_dias !== null
+                ? (int) $this->tiempo_ejecucion_dias
+                : null;
+
+            if (!$this->tiene_modificacion_vigente) {
+                return $base
+                    ?? ($this->tiempo_total_ejecucion_dias !== null ? (int) $this->tiempo_total_ejecucion_dias : null);
+            }
+
+            $added = (int) ($this->tiempo_ejecucion_dias_adicion ?? 0);
+            if ($base !== null && $added > 0) {
+                return $base + $added;
+            }
+
+            return $this->tiempo_total_ejecucion_dias !== null
+                ? (int) $this->tiempo_total_ejecucion_dias
+                : $base;
         }
     
         protected static function booted()

@@ -5,15 +5,26 @@ namespace Tests\Feature;
 use App\Models\GoogleIntegration;
 use App\Services\GoogleSheetsService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class GoogleSheetsServiceTest extends TestCase
 {
+    private string $originalDatabaseConnection;
+
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->originalDatabaseConnection = (string) config('database.default');
+        config([
+            'database.default' => 'sqlite',
+            'database.connections.sqlite.database' => ':memory:',
+        ]);
+        DB::purge('sqlite');
+        DB::reconnect('sqlite');
 
         Schema::create('google_integrations', function (Blueprint $table) {
             $table->id();
@@ -32,6 +43,8 @@ class GoogleSheetsServiceTest extends TestCase
     protected function tearDown(): void
     {
         Schema::dropIfExists('google_integrations');
+        DB::purge('sqlite');
+        config(['database.default' => $this->originalDatabaseConnection]);
         parent::tearDown();
     }
 

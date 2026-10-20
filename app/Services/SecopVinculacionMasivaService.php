@@ -7,19 +7,28 @@ use App\Models\Persona;
 use App\Models\SecopConciliacionLote;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\ValidationException;
 
 class SecopVinculacionMasivaService
 {
     public function __construct(
         private SecopConciliacionService $conciliacion,
         private SecopVinculacionService $vinculacion,
+        private SecopAlcanceEntidadService $alcanceEntidades,
     ) {
     }
 
     /** @return array{lote: SecopConciliacionLote, creado: bool} */
     public function start(array $filters, ?int $userId): array
     {
-        return Cache::lock('secop-vinculacion-exacta-inicio', 10)->block(3, function () use ($filters, $userId) {
+        $scope = $this->alcanceEntidades->configuracionCompleta();
+        if (!empty($filters['secretaria_id']) && !in_array((int) $filters['secretaria_id'], $scope['secretaria_ids'], true)) {
+            throw ValidationException::withMessages([
+                'secretaria_id' => 'La entidad seleccionada no está incluida en el alcance SECOP departamental.',
+            ]);
+        }
+
+        return Cache::lock('secop-vinculacion-exacta-inicio', 10)->block(3, function () use ($filters, $userId, $scope) {
             $active = SecopConciliacionLote::query()
                 ->whereIn('estado', ['pendiente', 'procesando'])
                 ->latest('id')
@@ -29,14 +38,17 @@ class SecopVinculacionMasivaService
             }
 
             $filters['anio'] = 2026;
-            $total = $this->eligiblePersonas($filters)->count();
+            $total = $this->eligiblePersonas($filters, 0, $scope['secretaria_ids'])->count();
             $lote = SecopConciliacionLote::create([
                 'anio' => 2026,
                 'secretaria_id' => $filters['secretaria_id'] ?? null,
                 'estado_contrato_id' => $filters['estado_contrato_id'] ?? null,
+                'secretaria_ids' => $scope['secretaria_ids'],
+                'nit_entidades' => $scope['nit_entidades'],
                 'iniciado_por' => $userId,
                 'estado' => $total > 0 ? 'pendiente' : 'finalizado',
                 'total_personas' => $total,
+                'resultados' => $this->emptyResults(),
                 'finalizado_at' => $total > 0 ? null : now(),
             ]);
 
@@ -65,7 +77,9 @@ class SecopVinculacionMasivaService
             'secretaria_id' => $lote->secretaria_id,
             'estado_contrato_id' => $lote->estado_contrato_id,
         ];
-        $persona = $this->eligiblePersonas($filters, (int) $lote->cursor_persona_id)->first();
+        $secretariaIds = array_map('intval', $lote->secretaria_ids ?: $this->alcanceEntidades->configuracionCompleta()['secretaria_ids']);
+        $nitEntidades = $lote->nit_entidades ?: $this->alcanceEntidades->configuracionCompleta()['nit_entidades'];
+        $persona = $this->eligiblePersonas($filters, (int) $lote->cursor_persona_id, $secretariaIds)->first();
         if (!$persona) {
             $this->finish($lote);
             return false;
@@ -78,11 +92,24 @@ class SecopVinculacionMasivaService
         try {
             // La búsqueda alternativa por otra cédula solo informa revisiones manuales;
             // no puede producir coincidencias exactas y se omite en el proceso masivo.
-            $result = $this->conciliacion->conciliarPersona($persona, '2026-01-01', 2026, false);
-            $rows = $result['filas']->filter(fn (array $row) => $this->rowMatches($row, $lote));
-            $exact = $rows->count();
+            $result = $this->conciliacion->conciliarPersona(
+                $persona,
+                '2026-01-01',
+                2026,
+                false,
+                2026,
+                $nitEntidades,
+                $secretariaIds,
+            );
+            if (!($result['consulta_secop_disponible'] ?? true)) {
+                throw new \RuntimeException('SECOP no respondió; la persona quedó sin evaluar completamente.');
+            }
 
-            foreach ($rows as $row) {
+            $rows = $result['filas']->filter(fn (array $row) => $this->rowIsEligible($row, $lote, $secretariaIds));
+            $exactRows = $rows->filter(fn (array $row) => (bool) ($row['seguro'] ?? false));
+            $exact = $exactRows->count();
+
+            foreach ($exactRows as $row) {
                 try {
                     $this->vinculacion->vincularSeguimientoDesdeCandidato(
                         $row['seguimiento']->load('persona'),
@@ -98,16 +125,24 @@ class SecopVinculacionMasivaService
             $errors[] = 'Persona #'.$persona->id.': '.$e->getMessage();
         }
 
+        $results = array_replace($this->emptyResults(), $lote->resultados ?? []);
+        foreach ($rows ?? collect() as $row) {
+            $key = $this->resultKey((string) ($row['estado'] ?? 'sin_resultado'));
+            $results[$key]++;
+        }
+
         $lote->update([
             'cursor_persona_id' => $persona->id,
             'personas_procesadas' => $lote->personas_procesadas + 1,
+            'seguimientos_revisados' => $lote->seguimientos_revisados + ($rows ?? collect())->count(),
             'coincidencias_exactas' => $lote->coincidencias_exactas + $exact,
             'vinculos_creados' => $lote->vinculos_creados + $linked,
+            'resultados' => $results,
             'errores' => $lote->errores + count($errors),
             'ultimo_error' => $errors !== [] ? implode(' ', $errors) : $lote->ultimo_error,
         ]);
 
-        if (!$this->eligiblePersonas($filters, $persona->id)->exists()) {
+        if (!$this->eligiblePersonas($filters, $persona->id, $secretariaIds)->exists()) {
             $this->finish($lote->fresh());
             return false;
         }
@@ -115,16 +150,20 @@ class SecopVinculacionMasivaService
         return true;
     }
 
-    public function eligiblePersonas(array $filters, int $cursor = 0): Builder
+    public function eligiblePersonas(array $filters, int $cursor = 0, array $secretariaIds = []): Builder
     {
         return Persona::query()
             ->where('id', '>', $cursor)
-            ->whereHas('seguimientos', function ($query) use ($filters) {
+            ->whereHas('seguimientos', function ($query) use ($filters, $secretariaIds) {
                 $query->where('tipo', 'contrato')
                     ->where('anio', 2026)
                     ->whereNotNull('numero_contrato')
                     ->where('numero_contrato', '<>', '')
                     ->whereDoesntHave('vinculoSecop');
+
+                if ($secretariaIds !== []) {
+                    $query->whereIn('secretaria_id', array_map('intval', $secretariaIds));
+                }
 
                 if (!empty($filters['secretaria_id'])) {
                     $query->where('secretaria_id', (int) $filters['secretaria_id']);
@@ -136,17 +175,44 @@ class SecopVinculacionMasivaService
             ->orderBy('id');
     }
 
-    private function rowMatches(array $row, SecopConciliacionLote $lote): bool
+    private function rowIsEligible(array $row, SecopConciliacionLote $lote, array $secretariaIds): bool
     {
         $seguimiento = $row['seguimiento'];
-        if (!$row['seguro'] || (int) $seguimiento->anio !== 2026 || $seguimiento->vinculoSecop) {
+        if ((int) $seguimiento->anio !== 2026 || !filled($seguimiento->numero_contrato) || $seguimiento->vinculoSecop) {
             return false;
         }
+        if (!in_array((int) $seguimiento->secretaria_id, $secretariaIds, true)) return false;
         if ($lote->secretaria_id && (int) $seguimiento->secretaria_id !== (int) $lote->secretaria_id) {
             return false;
         }
         return !$lote->estado_contrato_id
             || (int) $seguimiento->estado_contrato_id === (int) $lote->estado_contrato_id;
+    }
+
+    private function resultKey(string $status): string
+    {
+        return match ($status) {
+            'exacto' => 'exactos',
+            'ambiguo' => 'varias_coincidencias',
+            'conflicto' => 'contrato_utilizado',
+            'requiere_configuracion' => 'entidad_sin_parametrizar',
+            'requiere_revision' => 'entidad_o_documento_diferente',
+            'no_habilitado' => 'no_habilitados',
+            default => 'sin_contrato_encontrado',
+        };
+    }
+
+    private function emptyResults(): array
+    {
+        return [
+            'exactos' => 0,
+            'sin_contrato_encontrado' => 0,
+            'varias_coincidencias' => 0,
+            'entidad_sin_parametrizar' => 0,
+            'entidad_o_documento_diferente' => 0,
+            'contrato_utilizado' => 0,
+            'no_habilitados' => 0,
+        ];
     }
 
     private function finish(SecopConciliacionLote $lote): void
