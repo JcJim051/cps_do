@@ -28,6 +28,8 @@ class SecretariaRequest extends FormRequest
             'nombre' => ['required', 'string', 'max:255'],
             'convencion' => ['required', 'string', 'max:255'],
             'nit_secop' => ['nullable', 'string', 'max:30'],
+            'codigo_pci_secop' => ['nullable', 'string', 'max:80'],
+            'nombre_unidad_secop' => ['nullable', 'string', 'max:255'],
             'nombre_secop' => ['nullable', 'string', 'max:255'],
             'auditoria_secop_incluida' => ['boolean'],
             'es_descentralizada' => ['boolean'],

@@ -187,13 +187,26 @@ class SecopAplicacionService
             $values['fecha_finalizacion'] = $i->fecha_fin->format('Y-m-d'); $origins['fecha_finalizacion'] = 'SECOP';
         }
         if ($baseDays !== null && !$hasAddition) {
-            // En un contrato sin modificación, los totales dependen directamente
-            // del plazo inicial. Actualizarlos evita que la tabla conserve un
-            // total histórico mientras el detalle ya muestra el plazo nuevo.
-            $values['tiempo_total_ejecucion_dias'] = (int) $baseDays;
-            $origins['tiempo_total_ejecucion_dias'] = 'Derivado';
-            $values['tiempo_total_calendario_dias'] = (int) $baseDays;
-            $origins['tiempo_total_calendario_dias'] = 'Derivado';
+            $localBase = $s->tiempo_ejecucion_dias !== null ? (int) $s->tiempo_ejecucion_dias : null;
+            $localExecution = $s->tiempo_total_ejecucion_dias !== null ? (int) $s->tiempo_total_ejecucion_dias : null;
+            $localCalendar = $s->tiempo_total_calendario_dias !== null ? (int) $s->tiempo_total_calendario_dias : null;
+            $hasLocalExtension = $localBase !== null && (
+                ($localExecution !== null && $localExecution > $localBase)
+                || ($localCalendar !== null && $localCalendar > $localBase)
+                || ($localExecution !== null && $localExecution > (int) $baseDays)
+                || ($localCalendar !== null && $localCalendar > (int) $baseDays)
+            );
+
+            if (!$hasLocalExtension) {
+                // Solo es seguro recalcular los totales cuando localmente no hay
+                // evidencia de una extensión que SECOP podría no estar reportando.
+                $values['tiempo_total_ejecucion_dias'] = (int) $baseDays;
+                $origins['tiempo_total_ejecucion_dias'] = 'Derivado';
+                $values['tiempo_total_calendario_dias'] = (int) $baseDays;
+                $origins['tiempo_total_calendario_dias'] = 'Derivado';
+            } else {
+                $alerts[] = 'SECOP no reporta una adición, pero Integra conserva un total superior al plazo inicial; los totales locales no se reemplazaron automáticamente.';
+            }
         }
         if (($baseDays !== null || $addedDays > 0) && $source !== 'secop2') {
             $values['tiempo_total_ejecucion_dias'] = (int) ($baseDays ?? $s->tiempo_ejecucion_dias ?? 0) + $addedDays;

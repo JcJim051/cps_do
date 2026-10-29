@@ -144,7 +144,7 @@ class SecopAplicacionServiceTest extends TestCase
             'estado' => 'En ejecución',
             'fecha_inicio' => '2026-02-02',
             'fecha_fin' => '2026-07-04',
-            'duracion_inicial_dias' => 153,
+            'duracion_inicial_dias' => 180,
             'dias_adicionados' => 0,
             'marcacion_adicion' => false,
             'hash' => 'sin-adicion',
@@ -157,9 +157,47 @@ class SecopAplicacionServiceTest extends TestCase
         );
 
         $fresh = $tracking->fresh();
-        $this->assertSame(153, $fresh->tiempo_ejecucion_dias);
-        $this->assertSame(153, $fresh->tiempo_total_ejecucion_dias);
-        $this->assertSame(153, $fresh->tiempo_total_calendario_dias);
-        $this->assertSame(153, $fresh->tiempo_total_vigente_dias);
+        $this->assertSame(180, $fresh->tiempo_ejecucion_dias);
+        $this->assertSame(180, $fresh->tiempo_total_ejecucion_dias);
+        $this->assertSame(180, $fresh->tiempo_total_calendario_dias);
+        $this->assertSame(180, $fresh->tiempo_total_vigente_dias);
+    }
+
+    public function test_no_reduce_un_total_local_que_evidencia_una_extension_no_reportada(): void
+    {
+        $tracking = Seguimiento::create([
+            'tipo' => 'contrato',
+            'tiempo_ejecucion_dias' => 90,
+            'tiempo_total_ejecucion_dias' => 90,
+        ]);
+        DB::table('seguimientos')->where('id', $tracking->id)->update([
+            'adicion' => 'NO',
+            'tiempo_total_ejecucion_dias' => 90,
+            'tiempo_total_calendario_dias' => null,
+        ]);
+        $link = SecopVinculo::create([
+            'seguimiento_id' => $tracking->id,
+            'fuente_secop' => 'secop2',
+            'identificador_externo' => 'extension-no-reportada',
+        ]);
+        SecopInstantanea::create([
+            'vinculo_id' => $link->id,
+            'estado' => 'En ejecución',
+            'fecha_inicio' => '2026-01-01',
+            'fecha_fin' => '2026-03-31',
+            'duracion_inicial_dias' => 30,
+            'dias_adicionados' => 0,
+            'marcacion_adicion' => false,
+            'hash' => 'extension-no-reportada',
+            'consultado_at' => now(),
+        ]);
+
+        $preview = app(SecopAplicacionService::class)->preview(
+            $link->fresh(['seguimiento', 'ultimaInstantanea'])
+        );
+
+        $this->assertArrayNotHasKey('tiempo_total_ejecucion_dias', $preview['cambios']);
+        $this->assertArrayNotHasKey('tiempo_total_calendario_dias', $preview['cambios']);
+        $this->assertStringContainsString('no se reemplazaron', implode(' ', $preview['alertas']));
     }
 }

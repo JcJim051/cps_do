@@ -46,4 +46,31 @@ class DatosAbiertosSecopResilienciaTest extends TestCase
 
         Http::assertSent(fn (Request $request) => $request->hasHeader('X-App-Token', 'token-prueba'));
     }
+
+    public function test_contrato_secop_dos_se_complementa_con_codigo_y_nombre_de_unidad(): void
+    {
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), 'jbjy-vk9h')) {
+                return Http::response([[
+                    'id_contrato' => 'CO1.PCCNTR.1',
+                    'proceso_de_compra' => 'CO1.REQ.1',
+                    'referencia_del_contrato' => '59-2026',
+                    'documento_proveedor' => '123',
+                ]]);
+            }
+            if (str_contains($request->url(), 'p6dx-8zbt')) {
+                return Http::response([[
+                    'id_del_proceso' => 'CO1.REQ.1',
+                    'ppi' => 'PCI-SALUD',
+                    'nombre_de_la_unidad_de' => 'SECRETARÍA DE SALUD',
+                ]]);
+            }
+            return Http::response([]);
+        });
+
+        $result = (new DatosAbiertosSecopService(new SecopNormalizer()))->consultarPorDocumento('123');
+
+        $this->assertSame('PCI-SALUD', $result[0]['codigo_dependencia']);
+        $this->assertSame('SECRETARÍA DE SALUD', $result[0]['nombre_dependencia']);
+    }
 }

@@ -38,7 +38,8 @@ class SecopVinculacionMasivaServiceTest extends TestCase
         Schema::create('seguimientos', function (Blueprint $table) {
             $table->id(); $table->unsignedBigInteger('persona_id'); $table->string('tipo')->default('contrato');
             $table->unsignedBigInteger('secretaria_id')->nullable(); $table->unsignedBigInteger('estado_contrato_id')->nullable();
-            $table->integer('anio')->nullable(); $table->string('numero_contrato')->nullable(); $table->timestamps();
+            $table->integer('anio')->nullable(); $table->string('numero_contrato')->nullable();
+            $table->boolean('aut_despacho')->default(false); $table->boolean('aut_planeacion')->default(false); $table->timestamps();
         });
         Schema::create('secop_vinculos', function (Blueprint $table) {
             $table->id(); $table->unsignedBigInteger('seguimiento_id')->nullable(); $table->timestamps();
@@ -97,6 +98,28 @@ class SecopVinculacionMasivaServiceTest extends TestCase
         } finally {
             Queue::assertNothingPushed();
         }
+    }
+
+    public function test_incluye_seguimiento_autorizado_aunque_no_tenga_numero_de_contrato(): void
+    {
+        Queue::fake();
+        $this->secretaria(1, 'DEPARTAMENTO DEL META', '8920001488', true);
+        $person = Persona::create(['nombre_contratista' => 'Sin número', 'cedula_o_nit' => '123']);
+        $tracking = new Seguimiento([
+            'persona_id' => $person->id,
+            'tipo' => 'contrato',
+            'secretaria_id' => 1,
+            'anio' => 2026,
+            'numero_contrato' => null,
+            'aut_despacho' => true,
+            'aut_planeacion' => true,
+        ]);
+        $tracking->skipAutoCalculation()->skipSecopExclusions()->save();
+
+        $started = $this->service()->start([], 10);
+
+        $this->assertSame(1, $started['lote']->total_personas);
+        Queue::assertPushed(ProcesarVinculacionSecopExacta::class);
     }
 
     public function test_lote_acumula_los_motivos_de_no_vinculacion(): void

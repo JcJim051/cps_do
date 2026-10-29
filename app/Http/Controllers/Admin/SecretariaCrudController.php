@@ -50,6 +50,8 @@ class SecretariaCrudController extends CrudController
         ]);
         CRUD::addColumn(['name' => 'nit_secop', 'label' => 'NIT SECOP']);
         CRUD::addColumn(['name' => 'nombre_secop', 'label' => 'Entidad en SECOP']);
+        CRUD::addColumn(['name' => 'codigo_pci_secop', 'label' => 'Código PCI SECOP']);
+        CRUD::addColumn(['name' => 'nombre_unidad_secop', 'label' => 'Unidad contratante SECOP']);
         CRUD::addColumn([
             'name' => 'auditoria_secop_incluida',
             'label' => 'Auditoría departamental',
@@ -84,6 +86,16 @@ class SecretariaCrudController extends CrudController
             'name' => 'nombre_secop',
             'label' => 'Nombre de la entidad en SECOP',
             'hint' => 'Ejemplo: DEPARTAMENTO DEL META.',
+        ]);
+        CRUD::addField([
+            'name' => 'codigo_pci_secop',
+            'label' => 'Código PCI / dependencia en SECOP',
+            'hint' => 'Opcional. Para dependencias centrales permite distinguir la Secretaría dentro del Departamento del Meta.',
+        ]);
+        CRUD::addField([
+            'name' => 'nombre_unidad_secop',
+            'label' => 'Nombre de la unidad contratante en SECOP',
+            'hint' => 'Opcional e informativo. Puede completarse cuando Integra observe la unidad en Datos Abiertos.',
         ]);
         CRUD::addField([
             'name' => 'auditoria_secop_incluida',

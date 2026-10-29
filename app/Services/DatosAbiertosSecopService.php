@@ -43,7 +43,7 @@ class DatosAbiertosSecopService
             throw new \RuntimeException('SECOP I y SECOP II no respondieron. Revisa la conectividad o los límites de Datos Abiertos.');
         }
 
-        return collect(array_merge(...$results))
+        return collect($this->enrichWithSecop2Unit(array_merge(...$results)))
             ->sortByDesc(function (array $row) {
                 return $row['fecha_firma_sort'] ?? '';
             })
@@ -63,10 +63,10 @@ class DatosAbiertosSecopService
         $hasta = sprintf('%04d-01-01', $anio + 1);
         $vigencia = new SecopVigenciaService();
 
-        return collect(array_merge(
+        return collect($this->enrichWithSecop2Unit(array_merge(
             $this->consultarSecop2($documento, null, $limit, null, $desde, $hasta, $nitEntidades),
             $this->consultarSecop1($documento, null, $limit, null, $desde, $hasta, $nitEntidades),
-        ))
+        )))
             ->filter(fn (array $row) => $vigencia->contratoPertenece($row, $anio))
             ->when($nitEntidades !== [], fn ($rows) => $rows->filter(
                 fn (array $row) => $this->nitEstaPermitido($row['nit_entidad'] ?? null, $nitEntidades)
@@ -110,10 +110,10 @@ class DatosAbiertosSecopService
 
     public function consultarCandidatos(string $documento, ?string $nitEntidad = null, int $limit = 200): array
     {
-        $contratos = array_merge(
+        $contratos = $this->enrichWithSecop2Unit(array_merge(
             $this->consultarSecop2($documento, null, $limit, $nitEntidad),
             $this->consultarSecop1($documento, null, $limit, $nitEntidad)
-        );
+        ));
 
         $procesos = [];
         try {
@@ -137,6 +137,62 @@ class DatosAbiertosSecopService
         return collect($this->consultarCandidatos($documento, $nitEntidad))
             ->first(fn (array $row) => ($row['fuente_codigo'] ?? '') === $fuente
                 && (string) ($row['identificador_externo'] ?? '') === $identificador);
+    }
+
+    /**
+     * Complementa los contratos SECOP II con la unidad/subunidad contratante
+     * publicada en el conjunto de Procesos. Si el conjunto auxiliar falla, la
+     * consulta contractual continúa sin bloquearse.
+     */
+    private function enrichWithSecop2Unit(array $contracts): array
+    {
+        $processIds = collect($contracts)
+            ->where('fuente_codigo', 'secop2')
+            ->pluck('proceso_de_compra')
+            ->filter()
+            ->unique()
+            ->values();
+        if ($processIds->isEmpty()) {
+            return $contracts;
+        }
+
+        $units = collect();
+        try {
+            foreach ($processIds->chunk(40) as $chunk) {
+                $quoted = $chunk
+                    ->map(fn ($id) => "'".str_replace("'", "''", (string) $id)."'")
+                    ->implode(',');
+                $response = $this->http(20)->get('https://www.datos.gov.co/resource/p6dx-8zbt.json', [
+                    '$select' => 'id_del_proceso,ppi,nombre_de_la_unidad_de,codigo_entidad',
+                    '$where' => "id_del_proceso in({$quoted})",
+                    '$limit' => $chunk->count(),
+                ]);
+                if (!$response->ok()) {
+                    throw new \RuntimeException('SECOP II Procesos HTTP '.$response->status());
+                }
+                $units->push(...$response->json());
+            }
+        } catch (\Throwable $e) {
+            Log::warning('No fue posible complementar contratos SECOP con la unidad contratante.', [
+                'error' => $e->getMessage(),
+                'procesos' => $processIds->count(),
+            ]);
+            return $contracts;
+        }
+
+        $byProcess = $units->keyBy(fn (array $row) => (string) ($row['id_del_proceso'] ?? ''));
+        return collect($contracts)->map(function (array $contract) use ($byProcess) {
+            if (($contract['fuente_codigo'] ?? '') !== 'secop2') {
+                return $contract;
+            }
+            $unit = $byProcess->get((string) ($contract['proceso_de_compra'] ?? ''));
+            if (!$unit) {
+                return $contract;
+            }
+            $contract['codigo_dependencia'] = $unit['ppi'] ?? $unit['codigo_entidad'] ?? null;
+            $contract['nombre_dependencia'] = $unit['nombre_de_la_unidad_de'] ?? null;
+            return $contract;
+        })->all();
     }
 
     public function consultarReferenciaEntidad(string $referencia, int $anio, string $nitEntidad, int $limit = 50): array

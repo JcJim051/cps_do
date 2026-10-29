@@ -6,7 +6,7 @@
             <div><h2 class="h4 mb-0">Sincronización Seguimientos ↔ SECOP</h2><small class="text-muted">Vista previa y aplicación controlada · vigencia 2026</small></div>
             <button type="button" class="btn btn-primary btn-sm text-nowrap" id="link-exact" @disabled($conciliationRun?->isActive() || $auditScope['faltantes'] !== [])>
                 <i class="la {{ $conciliationRun?->isActive() ? 'la-spinner la-spin' : 'la-link' }}"></i>
-                <span>{{ $conciliationRun?->isActive() ? 'Conciliación en curso' : 'Vincular coincidencias exactas' }}</span>
+                <span>{{ $conciliationRun?->isActive() ? 'Conciliación en curso' : 'Vincular coincidencias seguras' }}</span>
             </button>
         </div>
         <form method="GET" class="row g-2 align-items-end" id="secop-filters">
@@ -186,7 +186,7 @@
     let timer = null;
 
     button.addEventListener('click', async () => {
-        if (!confirm('El servidor revisará en segundo plano los Seguimientos 2026 y vinculará únicamente coincidencias exactas de cédula, contrato, vigencia y entidad. Podrás salir de esta página. ¿Deseas continuar?')) return;
+        if (!confirm('El servidor revisará en segundo plano los Seguimientos 2026 sin vínculo. Usará coincidencias exactas y coincidencias de alta confianza por entidad, fechas y valores. Los casos ambiguos quedarán para revisión. Podrás salir de esta página. ¿Deseas continuar?')) return;
 
         const filters = document.getElementById('secop-filters');
         const secretaria = filters?.querySelector('[name="secretaria_id"]')?.value || '';
@@ -246,12 +246,16 @@
         const finished = run.estado === 'finalizado';
         progress.className = `alert ${finished ? (run.errores ? 'alert-warning' : 'alert-success') : (run.estado === 'fallido' ? 'alert-danger' : 'alert-info')}`;
         const results = run.resultados || {};
+        const exactasNoVinculadas = Math.max(0, (run.coincidencias_exactas || 0) - (run.vinculos_creados || 0));
         const reasons = [
+            ['Automáticas no vinculadas', exactasNoVinculadas],
+            ['Aproximadas de alta confianza', results.aproximados || 0],
             ['Sin contrato encontrado', results.sin_contrato_encontrado || 0],
             ['Varias coincidencias', results.varias_coincidencias || 0],
             ['Entidad sin parametrizar', results.entidad_sin_parametrizar || 0],
             ['Entidad o documento diferente', results.entidad_o_documento_diferente || 0],
             ['Contrato ya utilizado', results.contrato_utilizado || 0],
+            ['Vínculos fallidos', results.vinculos_fallidos || 0],
         ].filter(item => item[1] > 0)
          .map(item => `<span class="badge bg-light text-dark border">${item[0]}: ${item[1]}</span>`)
          .join(' ');
@@ -261,14 +265,14 @@
                 <div><span class="me-2">${run.porcentaje}%</span>${active ? '' : '<button type="button" class="btn-close btn-close-sm" aria-label="Cerrar"></button>'}</div>
             </div>
             <div class="progress mb-2" style="height:8px"><div class="progress-bar" style="width:${run.porcentaje}%"></div></div>
-            <div>${run.personas_procesadas} de ${run.total_personas} personas · ${run.coincidencias_exactas} coincidencias exactas · ${run.vinculos_creados} vínculos · ${run.errores} errores</div>
+            <div>${run.personas_procesadas} de ${run.total_personas} personas · ${run.coincidencias_exactas} coincidencias automáticas detectadas · ${run.vinculos_creados} vínculos · ${run.errores} errores</div>
             <div class="small mt-1"><strong>${run.seguimientos_revisados || 0}</strong> Seguimientos sin vínculo revisados${reasons ? ` · ${reasons}` : ''}</div>
             <small>Última actualización: ${run.actualizado || '—'}.${active ? ' Puedes salir de esta página; el proceso continúa en el servidor.' : ''}</small>
             ${run.ultimo_error ? `<details class="mt-1 small text-danger"><summary>Ver detalle del último error</summary><div class="mt-1 text-break">${escapeHtml(run.ultimo_error)}</div></details>` : ''}`;
         progress.querySelector('.btn-close')?.addEventListener('click', () => progress.classList.add('d-none'));
         button.disabled = active;
         button.querySelector('i').className = `la ${active ? 'la-spinner la-spin' : 'la-link'}`;
-        button.querySelector('span').textContent = active ? 'Proceso en segundo plano' : 'Vincular coincidencias exactas';
+        button.querySelector('span').textContent = active ? 'Proceso en segundo plano' : 'Vincular coincidencias seguras';
     }
 
     function statusLabel(status) {

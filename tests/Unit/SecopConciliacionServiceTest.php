@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\Persona;
 use App\Models\Seguimiento;
+use App\Models\Secretaria;
 use App\Services\DatosAbiertosSecopService;
 use App\Services\SecopConciliacionService;
 use App\Services\SecopEntidadService;
@@ -40,7 +41,7 @@ class SecopConciliacionServiceTest extends TestCase
 
         $this->assertSame('exacto', $result['filas'][0]['estado']);
         $this->assertTrue($result['filas'][0]['seguro']);
-        $this->assertSame('requiere_revision', $result['filas'][1]['estado']);
+        $this->assertSame('sin_resultado', $result['filas'][1]['estado']);
         $this->assertFalse($result['filas'][1]['seguro']);
     }
 
@@ -66,6 +67,144 @@ class SecopConciliacionServiceTest extends TestCase
 
         $this->assertSame(['CO1.ONLY'], $result['contratos_sin_seguimiento']->pluck('identificador_externo')->all());
         $this->assertSame(1, $result['metricas']['solo_secop']);
+    }
+
+    public function test_un_mismo_contrato_no_se_declara_exacto_para_dos_seguimientos(): void
+    {
+        $normalizer = new SecopNormalizer();
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->twice()->andReturn('9002205475');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            $normalizer,
+            $entity,
+        );
+
+        $persona = new Persona(['cedula_o_nit' => '1030590916']);
+        $first = $this->tracking(1, '59-2026', 2026);
+        $duplicate = $this->tracking(2, 'CONTRATO 059 DE 2026', 2026);
+        $contracts = collect([
+            $this->contract('CONTRATO 059 DE 2026', '1030590916', 'CO1.SAME', '2026-01-16'),
+        ]);
+
+        $result = $service->conciliar($persona, collect([$first, $duplicate]), $contracts, collect());
+
+        $this->assertSame('exacto', $result['filas'][0]['estado']);
+        $this->assertSame('conflicto', $result['filas'][1]['estado']);
+        $this->assertFalse($result['filas'][1]['seguro']);
+        $this->assertSame(1, $result['metricas']['exactos']);
+    }
+
+    public function test_vincula_por_fechas_y_valor_cuando_el_numero_local_esta_vacio(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('8920001488');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '1030590916']);
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'tipo' => 'contrato',
+            'anio' => 2026,
+            'numero_contrato' => null,
+            'aut_despacho' => true,
+            'aut_planeacion' => true,
+            'fecha_acta_inicio' => '2026-01-01',
+            'fecha_finalizacion' => '2026-06-30',
+            'tiempo_ejecucion_dias' => 180,
+            'valor_mensual' => 5000000,
+            'valor_total' => 30000000,
+            'valor_total_contrato' => 30000000,
+        ]);
+        $tracking->id = 10;
+        $tracking->setRelation('vinculoSecop', null);
+        $contracts = collect([array_merge(
+            $this->contract('CONTRATO 999 DE 2026', '1030590916', 'CO1.APPROX', '2026-01-05'),
+            [
+                'nit_entidad' => '892000148',
+                'fecha_inicio' => '2026-01-11',
+                'fecha_fin' => '2026-06-20',
+                'valor_contrato' => 28333333,
+                'valor_total_con_adiciones' => 28333333,
+            ],
+        )]);
+
+        $result = $service->conciliar($persona, collect([$tracking]), $contracts, collect());
+
+        $this->assertSame('aproximado', $result['filas'][0]['estado']);
+        $this->assertTrue($result['filas'][0]['seguro']);
+        $this->assertGreaterThanOrEqual(75, $result['filas'][0]['puntaje']);
+        $this->assertSame(1, $result['metricas']['aproximados']);
+        $this->assertSame(1, $result['metricas']['automaticos']);
+    }
+
+    public function test_codigo_pci_distingue_la_secretaria_central_antes_de_declarar_ambiguedad(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('8920001488');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '123']);
+        $tracking = $this->tracking(20, '59-2026', 2026);
+        $secretaria = new Secretaria();
+        $secretaria->setRawAttributes(['codigo_pci_secop' => 'PCI-SALUD']);
+        $tracking->setRelation('secretaria', $secretaria);
+        $base = array_replace(
+            $this->contract('59-2026', '123', 'CO1.MATCH', '2026-01-10'),
+            ['nit_entidad' => '892000148'],
+        );
+        $contracts = collect([
+            $base + ['codigo_dependencia' => 'PCI-SALUD'],
+            array_replace($base, ['identificador_externo' => 'CO1.OTHER', 'codigo_dependencia' => 'PCI-HACIENDA']),
+        ]);
+
+        $result = $service->conciliar($persona, collect([$tracking]), $contracts, collect());
+
+        $this->assertSame('exacto', $result['filas'][0]['estado']);
+        $this->assertSame('CO1.MATCH', $result['filas'][0]['candidato']['identificador_externo']);
+    }
+
+    public function test_no_vincula_aproximadamente_si_dos_candidatos_tienen_el_mismo_puntaje(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('8920001488');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '123']);
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'tipo' => 'contrato', 'anio' => 2026, 'numero_contrato' => null,
+            'aut_despacho' => true, 'aut_planeacion' => true,
+            'fecha_acta_inicio' => '2026-01-01', 'fecha_finalizacion' => '2026-06-30',
+            'tiempo_ejecucion_dias' => 180, 'valor_total' => 30000000,
+        ]);
+        $tracking->id = 30;
+        $tracking->setRelation('vinculoSecop', null);
+        $base = [
+            'tipo_registro' => 'contrato', 'fuente_codigo' => 'secop2',
+            'referencia_contrato' => 'SIN NUMERO', 'documento' => '123', 'nit_entidad' => '892000148',
+            'fecha_firma' => '2026-01-01', 'fecha_inicio' => '2026-01-05', 'fecha_fin' => '2026-06-25',
+            'valor_contrato' => 29000000, 'valor_total_con_adiciones' => 29000000,
+        ];
+        $contracts = collect([
+            $base + ['identificador_externo' => 'CO1.A'],
+            $base + ['identificador_externo' => 'CO1.B'],
+        ]);
+
+        $result = $service->conciliar($persona, collect([$tracking]), $contracts, collect());
+
+        $this->assertSame('requiere_revision', $result['filas'][0]['estado']);
+        $this->assertFalse($result['filas'][0]['seguro']);
+        $this->assertSame(0, $result['filas'][0]['margen']);
     }
 
     public function test_seguimiento_expone_fin_y_tiempo_calendario_vigentes_sin_perder_los_iniciales(): void

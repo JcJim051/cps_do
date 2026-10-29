@@ -7,6 +7,7 @@ use App\Models\Persona;
 use App\Services\SecopConciliacionService;
 use App\Services\SecopVinculacionService;
 use App\Services\SecopSincronizacionMasivaService;
+use App\Services\SecopAlcanceEntidadService;
 
 class PersonaSecopController extends Controller
 {
@@ -23,8 +24,18 @@ class PersonaSecopController extends Controller
         Persona $persona,
         SecopConciliacionService $conciliacion,
         SecopVinculacionService $vinculacion,
+        SecopAlcanceEntidadService $alcanceEntidades,
     ) {
-        $result = $conciliacion->conciliarPersona($persona);
+        $scope = $alcanceEntidades->configuracionCompleta();
+        $result = $conciliacion->conciliarPersona(
+            $persona,
+            '2026-01-01',
+            2026,
+            false,
+            2026,
+            $scope['nit_entidades'],
+            $scope['secretaria_ids'],
+        );
         $linked = 0;
         $errors = [];
 
@@ -51,6 +62,6 @@ class PersonaSecopController extends Controller
             return $redirect->with('error', $linked.' vínculos creados. '.implode(' ', $errors));
         }
 
-        return $redirect->with('success', $linked.' coincidencias exactas vinculadas con SECOP.');
+        return $redirect->with('success', $linked.' coincidencias seguras vinculadas con SECOP.');
     }
 }

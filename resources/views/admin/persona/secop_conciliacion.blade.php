@@ -3,6 +3,7 @@
     $canManage = backpack_user()?->hasAnyRole(['admin', 'diana']);
     $badge = [
         'exacto' => 'success',
+        'aproximado' => 'success',
         'vinculado' => 'primary',
         'ambiguo' => 'warning',
         'conflicto' => 'danger',
@@ -21,7 +22,7 @@
         <div class="card-header persona-tone-header persona-tone-header--purple d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
                 <strong>Conciliación Seguimientos ↔ SECOP</strong>
-                <div class="small opacity-75">Simulación por cédula. Ninguna sugerencia se aplica sin confirmación.</div>
+                <div class="small opacity-75">Vigencia 2026 · entidades departamentales parametrizadas. Ninguna sugerencia se aplica sin confirmación.</div>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge persona-tone-count">{{ $metrics['vinculados'] }} vinculados · {{ $metrics['revision'] }} por revisar · {{ $metrics['solo_secop'] ?? 0 }} solo SECOP</span>
@@ -38,18 +39,18 @@
                     SECOP no respondió en este momento. Se muestran los vínculos y las últimas instantáneas guardadas; los seguimientos sin vincular requieren reintentar la consulta.
                 </div>
             @endif
-            @if($canManage && ($metrics['vinculados'] > 0 || $metrics['exactos'] > 0))
+            @if($canManage && ($metrics['vinculados'] > 0 || $metrics['automaticos'] > 0))
                 <div class="px-3 py-2 border-bottom d-flex flex-wrap justify-content-end gap-2">
                     @if($metrics['vinculados'] > 0)
                         <form method="POST" action="{{ route('persona.secop.sync', $resultado['persona']) }}">@csrf
                             <button class="btn btn-primary btn-sm"><i class="la la-sync"></i> Sincronizar vinculados</button>
                         </form>
                     @endif
-                    @if($metrics['exactos'] > 0)
+                    @if($metrics['automaticos'] > 0)
                         <form method="POST" action="{{ route('persona.secop.link-exact', $resultado['persona']) }}">
                             @csrf
-                            <button class="btn btn-outline-primary btn-sm" onclick="return confirm('¿Vincular las {{ $metrics['exactos'] }} coincidencias exactas de esta persona?')">
-                                <i class="la la-link"></i> Vincular {{ $metrics['exactos'] }} exactas
+                            <button class="btn btn-outline-primary btn-sm" onclick="return confirm('¿Vincular las {{ $metrics['automaticos'] }} coincidencias seguras de esta persona?')">
+                                <i class="la la-link"></i> Vincular {{ $metrics['automaticos'] }} seguras
                             </button>
                         </form>
                     @endif
@@ -58,6 +59,7 @@
             <div class="px-3 py-2 bg-light border-bottom d-flex flex-wrap gap-3 small">
                 <span><strong>{{ $metrics['total'] }}</strong> seguimientos</span>
                 <span class="text-success"><strong>{{ $metrics['exactos'] }}</strong> exactos</span>
+                <span class="text-success"><strong>{{ $metrics['aproximados'] }}</strong> aproximados</span>
                 <span class="text-primary"><strong>{{ $metrics['vinculados'] }}</strong> vinculados</span>
                 <span class="text-warning"><strong>{{ $metrics['revision'] }}</strong> por revisar</span>
                 <span class="text-muted"><strong>{{ $metrics['sin_resultado'] }}</strong> sin resultado</span>
@@ -123,9 +125,12 @@
                                 @if($row['cantidad_candidatos'] > 1)
                                     <div class="small text-muted mt-1">{{ $row['cantidad_candidatos'] }} candidatos</div>
                                 @endif
+                                @if($row['puntaje'] !== null)
+                                    <div class="small text-muted mt-1">Confianza: {{ $row['puntaje'] }}/100 · margen {{ $row['margen'] ?? 0 }}</div>
+                                @endif
                             </td>
                             <td class="text-nowrap">
-                                @if($canManage && $row['estado'] === 'exacto' && $candidate)
+                                @if($canManage && in_array($row['estado'], ['exacto', 'aproximado'], true) && $candidate)
                                     <form method="POST" action="{{ route('seguimiento.secop.link', $tracking) }}" class="d-inline">
                                         @csrf
                                         <input type="hidden" name="fuente" value="{{ $candidate['fuente_codigo'] }}">

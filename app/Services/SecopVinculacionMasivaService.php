@@ -87,6 +87,7 @@ class SecopVinculacionMasivaService
 
         $exact = 0;
         $linked = 0;
+        $linkFailures = 0;
         $errors = [];
 
         try {
@@ -119,6 +120,7 @@ class SecopVinculacionMasivaService
                     $linked++;
                 } catch (\Throwable $e) {
                     $errors[] = 'Seguimiento #'.$row['seguimiento']->id.': '.$e->getMessage();
+                    $linkFailures++;
                 }
             }
         } catch (\Throwable $e) {
@@ -130,6 +132,7 @@ class SecopVinculacionMasivaService
             $key = $this->resultKey((string) ($row['estado'] ?? 'sin_resultado'));
             $results[$key]++;
         }
+        $results['vinculos_fallidos'] += $linkFailures;
 
         $lote->update([
             'cursor_persona_id' => $persona->id,
@@ -157,8 +160,13 @@ class SecopVinculacionMasivaService
             ->whereHas('seguimientos', function ($query) use ($filters, $secretariaIds) {
                 $query->where('tipo', 'contrato')
                     ->where('anio', 2026)
-                    ->whereNotNull('numero_contrato')
-                    ->where('numero_contrato', '<>', '')
+                    ->where(function ($eligible) {
+                        $eligible->where(function ($numbered) {
+                            $numbered->whereNotNull('numero_contrato')->where('numero_contrato', '<>', '');
+                        })->orWhere(function ($authorized) {
+                            $authorized->where('aut_despacho', true)->where('aut_planeacion', true);
+                        });
+                    })
                     ->whereDoesntHave('vinculoSecop');
 
                 if ($secretariaIds !== []) {
@@ -178,7 +186,9 @@ class SecopVinculacionMasivaService
     private function rowIsEligible(array $row, SecopConciliacionLote $lote, array $secretariaIds): bool
     {
         $seguimiento = $row['seguimiento'];
-        if ((int) $seguimiento->anio !== 2026 || !filled($seguimiento->numero_contrato) || $seguimiento->vinculoSecop) {
+        $eligible = filled($seguimiento->numero_contrato)
+            || ($seguimiento->aut_despacho && $seguimiento->aut_planeacion);
+        if ((int) $seguimiento->anio !== 2026 || !$eligible || $seguimiento->vinculoSecop) {
             return false;
         }
         if (!in_array((int) $seguimiento->secretaria_id, $secretariaIds, true)) return false;
@@ -193,6 +203,7 @@ class SecopVinculacionMasivaService
     {
         return match ($status) {
             'exacto' => 'exactos',
+            'aproximado' => 'aproximados',
             'ambiguo' => 'varias_coincidencias',
             'conflicto' => 'contrato_utilizado',
             'requiere_configuracion' => 'entidad_sin_parametrizar',
@@ -206,12 +217,14 @@ class SecopVinculacionMasivaService
     {
         return [
             'exactos' => 0,
+            'aproximados' => 0,
             'sin_contrato_encontrado' => 0,
             'varias_coincidencias' => 0,
             'entidad_sin_parametrizar' => 0,
             'entidad_o_documento_diferente' => 0,
             'contrato_utilizado' => 0,
             'no_habilitados' => 0,
+            'vinculos_fallidos' => 0,
         ];
     }
 

@@ -13,6 +13,7 @@ use Backpack\CRUD\app\Library\CrudPanel\CrudPanelFacade as CRUD;
 use App\Exports\PeopleTemplateExport;
 use App\Services\DatosAbiertosSecopService;
 use App\Services\SecopConciliacionService;
+use App\Services\SecopAlcanceEntidadService;
 use Illuminate\Http\Request;
 use App\Imports\PeopleImport;
 use Illuminate\Support\Facades\Cache;
@@ -28,6 +29,7 @@ class PersonaCrudController extends CrudController
     public function __construct(
         private DatosAbiertosSecopService $datosAbiertosSecopService,
         private SecopConciliacionService $secopConciliacionService,
+        private SecopAlcanceEntidadService $secopAlcanceEntidadService,
     ) {
         parent::__construct();
     }
@@ -835,7 +837,16 @@ class PersonaCrudController extends CrudController
                 'type' => 'closure',
                 'function' => function ($entry) {
                     try {
-                        $resultado = $this->secopConciliacionService->conciliarPersona($entry);
+                        $scope = $this->secopAlcanceEntidadService->configuracionCompleta();
+                        $resultado = $this->secopConciliacionService->conciliarPersona(
+                            $entry,
+                            '2026-01-01',
+                            2026,
+                            false,
+                            2026,
+                            $scope['nit_entidades'],
+                            $scope['secretaria_ids'],
+                        );
                         return view('admin.persona.secop_conciliacion', compact('resultado'))->render();
                     } catch (\Throwable $e) {
                         \Log::warning('No se pudo simular la conciliación SECOP de la persona '.$entry->id.': '.$e->getMessage());

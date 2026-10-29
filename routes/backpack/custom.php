@@ -111,6 +111,8 @@ Route::group([
     Route::post('autorizacion/{id}/toggle-autorizacion', 'AutorizacionCrudController@toggleAutorizacion')
         ->name('autorizacion.toggleAutorizacion');
     Route::get('programas/dashboard', 'ProgramasDashboardController@index')->name('programas.dashboard');
+    Route::get('programas/dashboard/detalle', 'ProgramasDashboardController@detail')->name('programas.detail');
+    Route::get('programas/dashboard/exportar', 'ProgramasDashboardController@export')->name('programas.export');
     Route::post('programas/sincronizar', 'ProgramasDashboardController@sync')->name('programas.sync');
     Route::crud('programas', 'ProgramasCrudController');
     Route::crud('equipo-campania', 'EquipoCampaniaCrudController');
