@@ -170,6 +170,53 @@ class SecopConciliacionServiceTest extends TestCase
         $this->assertSame('CO1.MATCH', $result['filas'][0]['candidato']['identificador_externo']);
     }
 
+    public function test_vincula_por_plazo_publicado_y_valor_cuando_integra_no_tiene_fechas(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('900220547');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '40217161']);
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'tipo' => 'contrato',
+            'anio' => 2026,
+            'numero_contrato' => null,
+            'aut_despacho' => true,
+            'aut_planeacion' => true,
+            'tiempo_ejecucion_dias' => 73,
+            'valor_mensual' => 4910000,
+            'valor_total' => 11947667,
+            'valor_total_contrato' => 11947667,
+        ]);
+        $tracking->id = 17171;
+        $tracking->setRelation('vinculoSecop', null);
+
+        $candidate = array_replace(
+            $this->contract('CONTRATO 0556 DE 2026', '40217161', 'CO1.PCCNTR.10081281', '2026-10-16'),
+            [
+                'nit_entidad' => '900220547',
+                'fecha_inicio' => '2026-10-19',
+                'fecha_fin' => '2026-12-20',
+                'duracion_inicial' => '73 Dia(s)',
+                'valor_contrato' => 11947618,
+                'valor_total_con_adiciones' => 11947618,
+            ],
+        );
+
+        $result = $service->conciliar($persona, collect([$tracking]), collect([$candidate]), collect());
+        $row = $result['filas'][0];
+
+        $this->assertSame('aproximado', $row['estado']);
+        $this->assertTrue($row['seguro']);
+        $this->assertGreaterThanOrEqual(75, $row['puntaje']);
+        $this->assertContains('Plazo publicado exacto: 73 días', $row['razones']);
+        $this->assertSame('CO1.PCCNTR.10081281', $row['candidato']['identificador_externo']);
+    }
+
     public function test_no_vincula_aproximadamente_si_dos_candidatos_tienen_el_mismo_puntaje(): void
     {
         $entity = Mockery::mock(SecopEntidadService::class);

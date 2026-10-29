@@ -86,4 +86,25 @@ class SecopNormalizer
 
         return round((((float) $observed - (float) $planned) / (float) $planned) * 100, 2);
     }
+
+    /**
+     * Convierte únicamente plazos publicados explícitamente en días. Para la
+     * conciliación no aproximamos meses o años, porque perderíamos la precisión
+     * que se necesita para crear un vínculo automático.
+     */
+    public function duracionPublicadaDias(mixed $duration, mixed $unit = null): ?int
+    {
+        $text = Str::upper(Str::ascii(trim((string) $duration.' '.(string) $unit)));
+        if ($text === '' || ! preg_match('/\bDIA(?:S)?\b/', $text)) {
+            return null;
+        }
+
+        if (! preg_match('/(?:^|\D)(\d+(?:[.,]\d+)?)/', $text, $matches)) {
+            return null;
+        }
+
+        $days = (int) round((float) str_replace(',', '.', $matches[1]));
+
+        return $days > 0 ? $days : null;
+    }
 }

@@ -513,7 +513,24 @@ class SecopConciliacionService
         }
 
         $localDays = $seguimiento->tiempo_total_vigente_dias;
-        if ($localDays !== null && $candidateStart && $candidateEnd) {
+        $publishedDays = $this->normalizer->duracionPublicadaDias(
+            $candidate['duracion_inicial'] ?? null,
+            $candidate['unidad_duracion'] ?? null,
+        );
+        if ($localDays !== null && $publishedDays !== null) {
+            $durationDifference = abs($publishedDays - (int) $localDays);
+            if ($durationDifference <= 7) {
+                // Un plazo explícitamente publicado en días es evidencia
+                // temporal suficiente cuando Integra todavía no tiene fechas.
+                $dateEvidence = true;
+                if ($durationDifference === 0) $score += 35;
+                elseif ($durationDifference <= 3) $score += 28;
+                else $score += 18;
+                $reasons[] = $durationDifference === 0
+                    ? "Plazo publicado exacto: {$publishedDays} días"
+                    : "Plazo publicado con diferencia de {$durationDifference} día(s)";
+            }
+        } elseif ($localDays !== null && $candidateStart && $candidateEnd) {
             $candidateDays = $candidateStart->diffInDays($candidateEnd) + 1;
             $durationDifference = abs($candidateDays - (int) $localDays);
             if ($durationDifference <= 7) $score += 10;
