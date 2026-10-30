@@ -24,4 +24,9 @@ class SecopConciliacionLote extends Model
     {
         return in_array($this->estado, ['pendiente', 'procesando'], true);
     }
+
+    public function revisiones()
+    {
+        return $this->hasMany(SecopConciliacionRevision::class, 'lote_id');
+    }
 }

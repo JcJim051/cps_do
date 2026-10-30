@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Jobs\ProcesarVinculacionSecopExacta;
 use App\Models\Persona;
 use App\Models\SecopConciliacionLote;
+use App\Models\SecopConciliacionRevision;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
@@ -170,6 +171,7 @@ class SecopVinculacionMasivaService
                     foreach (array_unique($row['bloqueos'] ?? ['revision_sin_detalle']) as $blocker) {
                         $results['motivos_revision'][$blocker] = ($results['motivos_revision'][$blocker] ?? 0) + 1;
                     }
+                    $this->storeReviewCandidate($lote, $row);
                 }
             }
             $results['vinculos_fallidos'] += $linkFailures;
@@ -271,6 +273,37 @@ class SecopVinculacionMasivaService
             'vinculos_fallidos' => 0,
             'motivos_revision' => [],
         ];
+    }
+
+    private function storeReviewCandidate(SecopConciliacionLote $lote, array $row): void
+    {
+        $seguimiento = $row['seguimiento'] ?? null;
+        $candidate = $row['candidato'] ?? null;
+        $source = (string) ($candidate['fuente_codigo'] ?? '');
+        $externalId = (string) ($candidate['identificador_externo'] ?? '');
+        if (!$seguimiento || !is_array($candidate) || $source === '' || $externalId === '') {
+            return;
+        }
+
+        $review = SecopConciliacionRevision::firstOrNew([
+            'lote_id' => $lote->id,
+            'seguimiento_id' => $seguimiento->id,
+        ]);
+        if ($review->exists && $review->estado !== 'pendiente') {
+            return;
+        }
+        $review->fill([
+            'fuente_secop' => $source,
+            'identificador_externo' => $externalId,
+            'referencia_contrato' => $candidate['referencia_contrato'] ?? null,
+            'puntaje' => $row['puntaje'] ?? null,
+            'margen' => $row['margen'] ?? null,
+            'razones' => array_values($row['razones'] ?? []),
+            'bloqueos' => array_values($row['bloqueos'] ?? []),
+            'candidato' => $candidate,
+            'estado' => 'pendiente',
+            'ultimo_error' => null,
+        ])->save();
     }
 
     private function finish(SecopConciliacionLote $lote): void

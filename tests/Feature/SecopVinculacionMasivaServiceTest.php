@@ -55,6 +55,15 @@ class SecopVinculacionMasivaServiceTest extends TestCase
             $table->json('resultados')->nullable(); $table->integer('errores')->default(0); $table->text('ultimo_error')->nullable();
             $table->timestamp('iniciado_at')->nullable(); $table->timestamp('finalizado_at')->nullable(); $table->timestamps();
         });
+        Schema::create('secop_conciliacion_revisiones', function (Blueprint $table) {
+            $table->id(); $table->unsignedBigInteger('lote_id'); $table->unsignedBigInteger('seguimiento_id');
+            $table->string('fuente_secop'); $table->string('identificador_externo'); $table->string('referencia_contrato')->nullable();
+            $table->integer('puntaje')->nullable(); $table->integer('margen')->nullable(); $table->json('razones')->nullable();
+            $table->json('bloqueos')->nullable(); $table->json('candidato'); $table->string('estado')->default('pendiente');
+            $table->unsignedBigInteger('resuelto_por')->nullable(); $table->timestamp('resuelto_at')->nullable();
+            $table->text('ultimo_error')->nullable(); $table->timestamps();
+            $table->unique(['lote_id', 'seguimiento_id']);
+        });
     }
 
     protected function tearDown(): void
@@ -148,7 +157,15 @@ class SecopVinculacionMasivaServiceTest extends TestCase
                         'seguimiento' => $second,
                         'estado' => 'requiere_revision',
                         'seguro' => false,
+                        'puntaje' => 62,
+                        'margen' => 62,
+                        'razones' => ['Cédula exacta', 'Valor aproximado'],
                         'bloqueos' => ['valor_fuera_de_rango'],
+                        'candidato' => [
+                            'fuente_codigo' => 'secop2',
+                            'identificador_externo' => 'CO1.PCCNTR.REVIEW',
+                            'referencia_contrato' => '2458 DE 2026',
+                        ],
                     ],
                 ]),
                 'contratos_sin_seguimiento' => collect(),
@@ -173,6 +190,12 @@ class SecopVinculacionMasivaServiceTest extends TestCase
         $this->assertSame(1, $lote->resultados['sin_contrato_encontrado']);
         $this->assertSame(1, $lote->resultados['entidad_o_documento_diferente']);
         $this->assertSame(1, $lote->resultados['motivos_revision']['valor_fuera_de_rango']);
+        $this->assertDatabaseHas('secop_conciliacion_revisiones', [
+            'lote_id' => $lote->id,
+            'seguimiento_id' => $second->id,
+            'identificador_externo' => 'CO1.PCCNTR.REVIEW',
+            'estado' => 'pendiente',
+        ]);
     }
 
     private function service(): SecopVinculacionMasivaService

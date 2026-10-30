@@ -23,4 +23,14 @@ class SeguimientoFilterRoutesTest extends TestCase
             Route::getRoutes()->getByName('seguimiento.export-executive-excel')->uri()
         );
     }
+
+    public function test_confirmacion_asistida_secop_esta_protegida_por_backpack(): void
+    {
+        $route = Route::getRoutes()->getByName('secop.sync.review-confirm');
+
+        $this->assertNotNull($route);
+        $this->assertSame('POST', $route->methods()[0]);
+        $this->assertContains('web', $route->middleware());
+        $this->assertContains(config('backpack.base.middleware_key', 'admin'), $route->middleware());
+    }
 }

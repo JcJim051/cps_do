@@ -156,6 +156,84 @@
     @endif
 </div>
 
+<details class="card mb-3" @if(request()->filled('revision_persona') || request()->filled('revision_bloqueo')) open @endif>
+    <summary class="card-header d-flex justify-content-between align-items-center cursor-pointer">
+        <div>
+            <strong>Revisión asistida de candidatos</strong>
+            <span class="badge bg-warning text-dark ms-1">{{ $reviewCandidatesCount }}</span>
+            <div class="small text-muted">Confirma únicamente los pares que hayas comparado. Al vincular se aplicará inmediatamente la información SECOP.</div>
+        </div>
+        <span class="small text-primary">Mostrar / ocultar</span>
+    </summary>
+    <div class="card-body border-bottom py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <input type="hidden" name="anio" value="2026">
+            <div class="col-md-5"><label class="form-label small mb-1">Persona</label><input type="search" name="revision_persona" value="{{ request('revision_persona') }}" class="form-control form-control-sm" placeholder="Nombre o cédula"></div>
+            <div class="col-md-5"><label class="form-label small mb-1">Motivo de bloqueo</label><select name="revision_bloqueo" class="form-select form-select-sm">
+                <option value="">Todos</option>
+                @foreach([
+                    'sin_fecha_ni_unidad' => 'Sin fechas ni unidad contratante',
+                    'puntaje_insuficiente' => 'Puntaje insuficiente',
+                    'valor_fuera_de_rango' => 'Valor fuera del rango',
+                    'numero_local_diferente' => 'Número local diferente',
+                    'margen_contrato_insuficiente' => 'Contrato compite con otro Seguimiento',
+                    'margen_seguimiento_insuficiente' => 'Dos contratos similares',
+                    'no_es_mejor_coincidencia_reciproca' => 'No es coincidencia recíproca',
+                ] as $value => $label)<option value="{{ $value }}" @selected(request('revision_bloqueo') === $value)>{{ $label }}</option>@endforeach
+            </select></div>
+            <div class="col-md-2 d-flex gap-1"><button class="btn btn-primary btn-sm flex-grow-1">Filtrar</button><a class="btn btn-outline-secondary btn-sm" href="{{ route('secop.sync.index', ['anio' => 2026]) }}">Limpiar</a></div>
+        </form>
+    </div>
+    <form method="POST" action="{{ route('secop.sync.review-confirm') }}" onsubmit="return confirm('¿Vincular y sincronizar los candidatos seleccionados? Esta decisión fue revisada manualmente.');">
+        @csrf
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead><tr>
+                    <th><input type="checkbox" id="review-all"></th>
+                    <th>Persona / dependencia</th>
+                    <th>Planeado en Integra</th>
+                    <th>Candidato SECOP</th>
+                    <th>Comparación</th>
+                    <th>Confianza</th>
+                </tr></thead>
+                <tbody>
+                @forelse($reviewCandidates as $review)
+                    @php
+                        $tracking = $review->seguimiento;
+                        $candidate = $review->candidato ?: [];
+                        $plannedValue = $tracking?->valor_total_contrato ?: $tracking?->valor_total;
+                        $observedValue = $candidate['valor_total_con_adiciones'] ?? $candidate['valor_contrato'] ?? null;
+                        $blockerLabels = [
+                            'sin_fecha_ni_unidad' => 'Sin fechas ni unidad',
+                            'puntaje_insuficiente' => 'Puntaje insuficiente',
+                            'valor_fuera_de_rango' => 'Valor fuera de rango',
+                            'numero_local_diferente' => 'Número local diferente',
+                            'margen_contrato_insuficiente' => 'Compite con otro Seguimiento',
+                            'margen_seguimiento_insuficiente' => 'Dos candidatos similares',
+                            'no_es_mejor_coincidencia_reciproca' => 'No es recíproca',
+                        ];
+                    @endphp
+                    <tr>
+                        <td><input class="review-pick" type="checkbox" name="ids[]" value="{{ $review->id }}"></td>
+                        <td><a href="{{ backpack_url('persona/'.$tracking?->persona_id.'/show') }}"><strong>{{ $tracking?->persona?->nombre_contratista ?: '-' }}</strong></a><br><small>{{ $tracking?->persona?->cedula_o_nit }} · {{ $tracking?->secretaria?->nombre }}</small><br><a class="small" href="{{ backpack_url('seguimiento/'.$tracking?->id.'/show') }}">Seguimiento #{{ $tracking?->id }}</a></td>
+                        <td><strong>{{ $tracking?->numero_contrato ?: 'Sin número' }}</strong><br><small>{{ $tracking?->fecha_acta_inicio?->format('d/m/Y') ?: '-' }} → {{ $tracking?->fecha_finalizacion_vigente?->format('d/m/Y') ?: '-' }} · {{ $tracking?->tiempo_total_vigente_dias ?? '-' }} días</small><br><small>{{ $plannedValue ? '$ '.number_format((float)$plannedValue, 0, ',', '.') : 'Sin valor' }}</small></td>
+                        <td><strong>{{ strtoupper($review->fuente_secop) }} · {{ $review->referencia_contrato ?: $review->identificador_externo }}</strong><br><small>{{ $candidate['fecha_inicio'] ?? '-' }} → {{ $candidate['fecha_fin'] ?? '-' }} · {{ $candidate['duracion_inicial'] ?? 'plazo no publicado' }}</small><br><small>{{ $observedValue !== null ? '$ '.number_format((float)$observedValue, 0, ',', '.') : 'Sin valor' }} · {{ $candidate['estado'] ?? 'Sin estado' }}</small></td>
+                        <td class="small"><div>{{ Str::limit($candidate['objeto'] ?? 'Sin objeto publicado', 170) }}</div>@foreach($review->razones ?: [] as $reason)<span class="badge bg-light text-dark border me-1 mt-1">{{ $reason }}</span>@endforeach</td>
+                        <td><strong>{{ $review->puntaje ?? 0 }}/100</strong><br><small>Margen {{ $review->margen ?? 0 }}</small><br>@foreach($review->bloqueos ?: [] as $blocker)<span class="badge bg-warning text-dark d-inline-block mt-1">{{ $blockerLabels[$blocker] ?? str_replace('_', ' ', $blocker) }}</span>@endforeach</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="text-center text-muted py-4">El último lote no tiene candidatos pendientes de revisión asistida.</td></tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>{{ $reviewCandidates->links() }}</div>
+            <button class="btn btn-primary btn-sm" @disabled($reviewCandidates->isEmpty())><i class="la la-link"></i> Confirmar seleccionados</button>
+        </div>
+    </form>
+</details>
+
 <form method="POST" action="{{ route('secop.sync.apply') }}">@csrf
 <div class="card"><div class="card-header d-flex justify-content-between align-items-center">
     <div><strong>Contratos vinculados</strong> <span class="badge bg-light text-dark ms-1">{{ $links->count() }}</span></div>
@@ -178,6 +256,11 @@
 </tr>
 @empty<tr><td colspan="6" class="text-center text-muted py-4">No hay Seguimientos 2026 vinculados.</td></tr>@endforelse
 </tbody></table></div></div></div></form>
+<script>
+document.getElementById('review-all')?.addEventListener('change', event => {
+    document.querySelectorAll('.review-pick').forEach(item => item.checked = event.target.checked);
+});
+</script>
 <script>
 (() => {
     const button = document.getElementById('link-exact');

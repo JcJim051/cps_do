@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\SecopVinculo;
 use App\Models\SecopConciliacionLote;
+use App\Models\SecopConciliacionRevision;
 use App\Models\SecopAuditoriaHallazgo;
 use App\Models\SecopAuditoriaLote;
 use App\Models\Secretaria;
 use App\Services\SecopSincronizacionMasivaService;
 use App\Services\SecopVinculacionMasivaService;
+use App\Services\SecopVinculacionService;
 use App\Services\SecopAuditoriaService;
 use App\Services\SecopAlcanceEntidadService;
 use Illuminate\Http\Request;
@@ -28,6 +30,19 @@ class SecopSincronizacionController extends Controller
         $links = $query->get();
         $summary = $request->boolean('simular') ? $service->run($links, 'simulacion', backpack_user()?->id, true) : null;
         $conciliationRun = SecopConciliacionLote::query()->latest('id')->first();
+        $reviewsQuery = $conciliationRun
+            ? SecopConciliacionRevision::query()
+                ->where('lote_id', $conciliationRun->id)
+                ->where('estado', 'pendiente')
+                ->when($request->filled('revision_persona'), function ($query) use ($request) {
+                    $term = trim($request->string('revision_persona')->toString());
+                    $query->whereHas('seguimiento.persona', fn ($personQuery) => $personQuery
+                        ->where('nombre_contratista', 'like', "%{$term}%")
+                        ->orWhere('cedula_o_nit', 'like', "%{$term}%"));
+                })
+                ->when($request->filled('revision_bloqueo'), fn ($query) => $query
+                    ->whereJsonContains('bloqueos', $request->string('revision_bloqueo')->toString()))
+            : SecopConciliacionRevision::query()->whereRaw('1 = 0');
         $auditRuns = SecopAuditoriaLote::query()->latest('id')->limit(12)->get();
         $latestAuditRun = $auditRuns->first();
         $requestedAuditId = $request->integer('auditoria_lote');
@@ -56,6 +71,13 @@ class SecopSincronizacionController extends Controller
             'estados' => \App\Models\Estados::query()->orderBy('nombre')->get(),
             'conciliationRun' => $conciliationRun,
             'conciliationStatus' => $conciliationRun ? $this->serializeRun($conciliationRun) : null,
+            'reviewCandidates' => $reviewsQuery
+                ->with(['seguimiento.persona', 'seguimiento.secretaria'])
+                ->orderByDesc('puntaje')->orderByDesc('margen')
+                ->paginate(50, ['*'], 'revision_page')->withQueryString(),
+            'reviewCandidatesCount' => $conciliationRun
+                ? SecopConciliacionRevision::query()->where('lote_id', $conciliationRun->id)->where('estado', 'pendiente')->count()
+                : 0,
             'auditRun' => $auditRun,
             'latestAuditRun' => $latestAuditRun,
             'auditRuns' => $auditRuns,
@@ -106,6 +128,57 @@ class SecopSincronizacionController extends Controller
     {
         $lote = SecopConciliacionLote::query()->latest('id')->first();
         return response()->json(['lote' => $lote ? $this->serializeRun($lote) : null]);
+    }
+
+    public function confirmReviews(Request $request, SecopVinculacionService $service)
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:200'],
+            'ids.*' => ['integer', 'distinct'],
+        ]);
+        $reviews = SecopConciliacionRevision::query()
+            ->whereIn('id', $data['ids'])
+            ->where('estado', 'pendiente')
+            ->with(['seguimiento.persona', 'seguimiento.vinculoSecop'])
+            ->get();
+
+        $linked = 0;
+        $errors = 0;
+        foreach ($reviews as $review) {
+            try {
+                if (!$review->seguimiento || $review->seguimiento->vinculoSecop) {
+                    throw new \RuntimeException('El Seguimiento ya no está disponible o ya fue vinculado.');
+                }
+                $candidate = $review->candidato;
+                if (!is_array($candidate)
+                    || ($candidate['fuente_codigo'] ?? null) !== $review->fuente_secop
+                    || (string) ($candidate['identificador_externo'] ?? '') !== $review->identificador_externo) {
+                    throw new \RuntimeException('El candidato almacenado no es válido.');
+                }
+                $service->vincularSeguimientoDesdeCandidato(
+                    $review->seguimiento,
+                    $candidate,
+                    backpack_user()?->id,
+                );
+                $review->update([
+                    'estado' => 'vinculado',
+                    'resuelto_por' => backpack_user()?->id,
+                    'resuelto_at' => now(),
+                    'ultimo_error' => null,
+                ]);
+                $linked++;
+            } catch (\Throwable $e) {
+                $review->update(['estado' => 'error', 'ultimo_error' => $e->getMessage()]);
+                $errors++;
+            }
+        }
+
+        $message = "Revisión confirmada: {$linked} vínculo(s) creados y sincronizados";
+        if ($errors) $message .= "; {$errors} no pudieron vincularse";
+        $message .= '.';
+
+        return redirect()->route('secop.sync.index', ['anio' => 2026])
+            ->with($errors ? 'warning' : 'success', $message);
     }
 
     public function startAudit(Request $request, SecopAuditoriaService $service)
