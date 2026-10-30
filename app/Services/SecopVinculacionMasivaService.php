@@ -15,6 +15,7 @@ class SecopVinculacionMasivaService
         private SecopConciliacionService $conciliacion,
         private SecopVinculacionService $vinculacion,
         private SecopAlcanceEntidadService $alcanceEntidades,
+        private DatosAbiertosSecopService $secop,
     ) {
     }
 
@@ -79,73 +80,111 @@ class SecopVinculacionMasivaService
         ];
         $secretariaIds = array_map('intval', $lote->secretaria_ids ?: $this->alcanceEntidades->configuracionCompleta()['secretaria_ids']);
         $nitEntidades = $lote->nit_entidades ?: $this->alcanceEntidades->configuracionCompleta()['nit_entidades'];
-        $persona = $this->eligiblePersonas($filters, (int) $lote->cursor_persona_id, $secretariaIds)->first();
-        if (!$persona) {
+        $personas = $this->eligiblePersonas($filters, (int) $lote->cursor_persona_id, $secretariaIds)
+            ->limit(40)
+            ->get();
+        if ($personas->isEmpty()) {
             $this->finish($lote);
             return false;
         }
 
-        $exact = 0;
-        $linked = 0;
-        $linkFailures = 0;
-        $errors = [];
-
+        // Una petición por fuente para todo el bloque. Si el proveedor externo
+        // rechaza el lote, la ruta individual queda como respaldo seguro.
+        $bulkAvailable = false;
         try {
-            // La búsqueda alternativa por otra cédula solo informa revisiones manuales;
-            // no puede producir coincidencias exactas y se omite en el proceso masivo.
-            $result = $this->conciliacion->conciliarPersona(
-                $persona,
-                '2026-01-01',
+            $byDocument = $this->secop->consultarPorDocumentosVigencia(
+                $personas->pluck('cedula_o_nit')->all(),
                 2026,
-                false,
-                2026,
+                50000,
                 $nitEntidades,
-                $secretariaIds,
             );
-            if (!($result['consulta_secop_disponible'] ?? true)) {
-                throw new \RuntimeException('SECOP no respondió; la persona quedó sin evaluar completamente.');
+            foreach ($personas as $persona) {
+                $documento = preg_replace('/\D+/', '', (string) $persona->cedula_o_nit) ?: '';
+                $documento = ltrim($documento, '0') ?: $documento;
+                $this->conciliacion->cacheContratosPersonaVigencia(
+                    $persona,
+                    2026,
+                    $nitEntidades,
+                    $byDocument[$documento] ?? [],
+                );
             }
-
-            $rows = $result['filas']->filter(fn (array $row) => $this->rowIsEligible($row, $lote, $secretariaIds));
-            $exactRows = $rows->filter(fn (array $row) => (bool) ($row['seguro'] ?? false));
-            $exact = $exactRows->count();
-
-            foreach ($exactRows as $row) {
-                try {
-                    $this->vinculacion->vincularSeguimientoDesdeCandidato(
-                        $row['seguimiento']->load('persona'),
-                        $row['candidato'],
-                        $lote->iniciado_por,
-                    );
-                    $linked++;
-                } catch (\Throwable $e) {
-                    $errors[] = 'Seguimiento #'.$row['seguimiento']->id.': '.$e->getMessage();
-                    $linkFailures++;
-                }
-            }
+            $bulkAvailable = true;
         } catch (\Throwable $e) {
-            $errors[] = 'Persona #'.$persona->id.': '.$e->getMessage();
+            report($e);
         }
 
-        $results = array_replace($this->emptyResults(), $lote->resultados ?? []);
-        foreach ($rows ?? collect() as $row) {
-            $key = $this->resultKey((string) ($row['estado'] ?? 'sin_resultado'));
-            $results[$key]++;
+        foreach ($personas as $persona) {
+            $lote->refresh();
+            if (!$lote->isActive()) {
+                return false;
+            }
+
+            $exact = 0;
+            $linked = 0;
+            $linkFailures = 0;
+            $errors = [];
+            $rows = collect();
+
+            try {
+                // Con el lote disponible, esta llamada lee caché y no vuelve a SECOP.
+                // Si falló la consulta agrupada, conserva el mecanismo individual.
+                $result = $this->conciliacion->conciliarPersona(
+                    $persona,
+                    '2026-01-01',
+                    2026,
+                    false,
+                    2026,
+                    $nitEntidades,
+                    $secretariaIds,
+                );
+                if (!($result['consulta_secop_disponible'] ?? true)) {
+                    throw new \RuntimeException('SECOP no respondió; la persona quedó sin evaluar completamente.');
+                }
+
+                $rows = $result['filas']->filter(fn (array $row) => $this->rowIsEligible($row, $lote, $secretariaIds));
+                $exactRows = $rows->filter(fn (array $row) => (bool) ($row['seguro'] ?? false));
+                $exact = $exactRows->count();
+
+                foreach ($exactRows as $row) {
+                    try {
+                        $this->vinculacion->vincularSeguimientoDesdeCandidato(
+                            $row['seguimiento']->load('persona'),
+                            $row['candidato'],
+                            $lote->iniciado_por,
+                        );
+                        $linked++;
+                    } catch (\Throwable $e) {
+                        $errors[] = 'Seguimiento #'.$row['seguimiento']->id.': '.$e->getMessage();
+                        $linkFailures++;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $errors[] = 'Persona #'.$persona->id.': '.$e->getMessage();
+            }
+
+            $results = array_replace($this->emptyResults(), $lote->resultados ?? []);
+            foreach ($rows as $row) {
+                $key = $this->resultKey((string) ($row['estado'] ?? 'sin_resultado'));
+                $results[$key]++;
+            }
+            $results['vinculos_fallidos'] += $linkFailures;
+
+            $lote->update([
+                'cursor_persona_id' => $persona->id,
+                'personas_procesadas' => $lote->personas_procesadas + 1,
+                'seguimientos_revisados' => $lote->seguimientos_revisados + $rows->count(),
+                'coincidencias_exactas' => $lote->coincidencias_exactas + $exact,
+                'vinculos_creados' => $lote->vinculos_creados + $linked,
+                'resultados' => $results,
+                'errores' => $lote->errores + count($errors),
+                'ultimo_error' => $errors !== []
+                    ? implode(' ', $errors).($bulkAvailable ? '' : ' Consulta masiva no disponible; se usó respaldo individual.')
+                    : $lote->ultimo_error,
+            ]);
         }
-        $results['vinculos_fallidos'] += $linkFailures;
 
-        $lote->update([
-            'cursor_persona_id' => $persona->id,
-            'personas_procesadas' => $lote->personas_procesadas + 1,
-            'seguimientos_revisados' => $lote->seguimientos_revisados + ($rows ?? collect())->count(),
-            'coincidencias_exactas' => $lote->coincidencias_exactas + $exact,
-            'vinculos_creados' => $lote->vinculos_creados + $linked,
-            'resultados' => $results,
-            'errores' => $lote->errores + count($errors),
-            'ultimo_error' => $errors !== [] ? implode(' ', $errors) : $lote->ultimo_error,
-        ]);
-
-        if (!$this->eligiblePersonas($filters, $persona->id, $secretariaIds)->exists()) {
+        $lastPersonaId = (int) $personas->last()->id;
+        if (!$this->eligiblePersonas($filters, $lastPersonaId, $secretariaIds)->exists()) {
             $this->finish($lote->fresh());
             return false;
         }

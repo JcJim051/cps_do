@@ -177,6 +177,22 @@ class SecopConciliacionService
         return $result;
     }
 
+    /** Precalienta el mismo caché que usa conciliarPersona para evitar una consulta por cédula. */
+    public function cacheContratosPersonaVigencia(
+        Persona $persona,
+        int $anio,
+        array $nitEntidades,
+        array $contratos,
+    ): void {
+        $documento = $this->normalizer->documento($persona->cedula_o_nit);
+        $scopeSuffix = $nitEntidades !== [] ? '_entidades_'.sha1(implode('|', $nitEntidades)) : '';
+        Cache::put(
+            'datos_abiertos_contratos_'.$documento.'_vigencia_'.$anio.$scopeSuffix,
+            $contratos,
+            600,
+        );
+    }
+
     public function conciliar(Persona $persona, Collection $seguimientos, Collection $contratos, ?Collection $used = null): array
     {
         $this->nitCache = [];
@@ -408,8 +424,9 @@ class SecopConciliacionService
         $nit = $this->nitFor($seguimiento);
         $secretaria = $seguimiento->relationLoaded('secretaria') ? $seguimiento->getRelation('secretaria') : null;
         $dependencyCode = $this->identity($secretaria?->codigo_pci_secop);
+        $dependencyName = $this->normalizer->unidadContratante($secretaria?->nombre_unidad_secop);
 
-        return $contracts->filter(function (array $candidate) use ($seguimiento, $document, $nit, $dependencyCode) {
+        return $contracts->filter(function (array $candidate) use ($seguimiento, $document, $nit, $dependencyCode, $dependencyName) {
             $candidateDocument = $this->normalizer->documento($candidate['documento'] ?? '');
             if ($candidateDocument === '' || $candidateDocument !== $document) {
                 return false;
@@ -419,6 +436,10 @@ class SecopConciliacionService
             }
             $candidateCode = $this->identity($candidate['codigo_dependencia'] ?? null);
             if ($dependencyCode !== '' && $candidateCode !== '' && $dependencyCode !== $candidateCode) {
+                return false;
+            }
+            $candidateName = $this->normalizer->unidadContratante($candidate['nombre_dependencia'] ?? null);
+            if ($dependencyName !== '' && $candidateName !== '' && $dependencyName !== $candidateName) {
                 return false;
             }
             return $this->candidateBelongsToYear($candidate, (int) $seguimiento->anio);
@@ -547,6 +568,14 @@ class SecopConciliacionService
             $reasons[] = 'Código de dependencia SECOP exacto';
         } elseif ($candidateCode !== '') {
             $reasons[] = 'Código SECOP observado: '.($candidate['codigo_dependencia'] ?? $candidateCode);
+        }
+        $dependencyName = $this->normalizer->unidadContratante($secretaria?->nombre_unidad_secop);
+        $candidateName = $this->normalizer->unidadContratante($candidate['nombre_dependencia'] ?? null);
+        if ($dependencyName !== '' && $candidateName !== '' && $dependencyName === $candidateName) {
+            $score += 15;
+            $reasons[] = 'Unidad contratante SECOP exacta';
+        } elseif ($candidateName !== '') {
+            $reasons[] = 'Unidad SECOP observada: '.($candidate['nombre_dependencia'] ?? $candidateName);
         }
 
         $localNumber = $this->normalizer->contrato($seguimiento->numero_contrato, $seguimiento->anio);

@@ -77,6 +77,100 @@ class DatosAbiertosSecopService
             ->all();
     }
 
+    /**
+     * Consulta varios documentos en una sola petición por fuente y devuelve
+     * los contratos agrupados por documento normalizado. Está orientado a los
+     * procesos masivos; la consulta individual se conserva para Persona.
+     *
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    public function consultarPorDocumentosVigencia(
+        array $documentos,
+        int $anio,
+        int $limit = 50000,
+        array $nitEntidades = [],
+    ): array {
+        $documentos = collect($documentos)
+            ->map(fn ($documento) => $this->normalizer->documento($documento))
+            ->filter()
+            ->unique()
+            ->values();
+        if ($documentos->isEmpty()) {
+            return [];
+        }
+
+        $desde = sprintf('%04d-01-01', $anio);
+        $hasta = sprintf('%04d-01-01', $anio + 1);
+        $quoted = $documentos
+            ->map(fn ($documento) => "'".str_replace("'", "''", $documento)."'")
+            ->implode(',');
+        $limit = max(1, min(50000, $limit));
+
+        $secop2Where = "documento_proveedor in({$quoted})"
+            ." AND ((fecha_de_inicio_del_contrato IS NOT NULL"
+            ." AND fecha_de_inicio_del_contrato < '{$hasta}T00:00:00.000'"
+            ." AND (fecha_de_fin_del_contrato IS NULL OR fecha_de_fin_del_contrato >= '{$desde}T00:00:00.000'))"
+            ." OR (fecha_de_inicio_del_contrato IS NULL"
+            ." AND fecha_de_firma >= '{$desde}T00:00:00.000'"
+            ." AND fecha_de_firma < '{$hasta}T00:00:00.000'))";
+        if ($nitEntidades !== []) {
+            $secop2Where .= ' AND '.$this->nitsWhere('nit_entidad', $nitEntidades, false);
+        }
+
+        $secop1Where = "identificacion_del_contratista in({$quoted})"
+            ." AND ((fecha_ini_ejec_contrato IS NOT NULL"
+            ." AND fecha_ini_ejec_contrato < '{$hasta}T00:00:00.000'"
+            ." AND (fecha_fin_ejec_contrato IS NULL OR fecha_fin_ejec_contrato >= '{$desde}T00:00:00.000'))"
+            ." OR (fecha_ini_ejec_contrato IS NULL"
+            ." AND fecha_de_firma_del_contrato >= '{$desde}T00:00:00.000'"
+            ." AND fecha_de_firma_del_contrato < '{$hasta}T00:00:00.000'))";
+        if ($nitEntidades !== []) {
+            $secop1Where .= ' AND '.$this->nitsWhere('nit_de_la_entidad', $nitEntidades, true);
+        }
+
+        $secop2 = $this->http(25)->get('https://www.datos.gov.co/resource/jbjy-vk9h.json', [
+            '$select' => $this->secop2Select(),
+            '$where' => $secop2Where,
+            '$order' => 'documento_proveedor, fecha_de_firma DESC',
+            '$limit' => $limit,
+        ]);
+        if (!$secop2->ok()) {
+            throw new \RuntimeException('SECOP II masivo HTTP '.$secop2->status());
+        }
+
+        $secop1 = $this->http(25)->get('https://www.datos.gov.co/resource/f789-7hwg.json', [
+            '$select' => $this->secop1Select(),
+            '$where' => $secop1Where,
+            '$order' => 'identificacion_del_contratista, fecha_de_firma_del_contrato DESC',
+            '$limit' => $limit,
+        ]);
+        if (!$secop1->ok()) {
+            throw new \RuntimeException('SECOP I masivo HTTP '.$secop1->status());
+        }
+
+        $vigencia = new SecopVigenciaService();
+        $contracts = collect($this->enrichWithSecop2Unit(array_merge(
+            collect($secop2->json())->map(fn (array $row) => $this->mapSecop2($row))->all(),
+            collect($secop1->json())->map(fn (array $row) => $this->mapSecop1($row))->all(),
+        )))
+            ->filter(fn (array $row) => $vigencia->contratoPertenece($row, $anio))
+            ->when($nitEntidades !== [], fn ($rows) => $rows->filter(
+                fn (array $row) => $this->nitEstaPermitido($row['nit_entidad'] ?? null, $nitEntidades)
+            ))
+            ->unique(fn (array $row) => ($row['fuente_codigo'] ?? '').'|'.($row['identificador_externo'] ?? ''));
+
+        $grouped = $contracts
+            ->groupBy(fn (array $row) => $this->normalizer->documento($row['documento'] ?? ''))
+            ->map(fn (Collection $rows) => $rows
+                ->sortByDesc(fn (array $row) => $row['fecha_firma_sort'] ?? '')
+                ->values()
+                ->all());
+
+        return $documentos->mapWithKeys(fn (string $documento) => [
+            $documento => $grouped->get($documento, []),
+        ])->all();
+    }
+
     /** Consulta contratos vinculados en lotes, usando el identificador estable de cada conjunto. */
     public function consultarPorIdentificadores(string $fuente, array $identificadores): array
     {

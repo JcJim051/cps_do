@@ -25,4 +25,14 @@ class SecopNormalizerTest extends TestCase
         $this->assertTrue($normalizer->nitCoincide('9002205475', '900220547'));
         $this->assertFalse($normalizer->nitCoincide('9002205475', '8920001488'));
     }
+
+    public function test_normaliza_nombre_de_unidad_contratante(): void
+    {
+        $normalizer = new SecopNormalizer();
+
+        $this->assertSame(
+            $normalizer->unidadContratante('Dirección Gestión del Riesgo'),
+            $normalizer->unidadContratante('DIRECCION - GESTION DEL RIESGO'),
+        );
+    }
 }

@@ -15,7 +15,10 @@ class ProcesarVinculacionSecopExacta implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
-    public int $timeout = 75;
+    // Debe permanecer por debajo de DB_QUEUE_RETRY_AFTER (180 por defecto)
+    // para impedir que otro worker reserve el mismo bloque todavía activo.
+    public int $timeout = 150;
+    public array $backoff = [5, 20];
 
     public function __construct(public int $loteId)
     {
@@ -25,7 +28,7 @@ class ProcesarVinculacionSecopExacta implements ShouldQueue
     {
         if ($service->processNext($this->loteId)) {
             // El pequeño retraso permite que el trabajo actual cierre antes de
-            // que otro trabajador tome la siguiente persona del mismo lote.
+            // que otro trabajador tome el siguiente bloque del mismo lote.
             self::dispatch($this->loteId)->delay(now()->addSecond());
         }
     }

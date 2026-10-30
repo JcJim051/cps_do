@@ -73,4 +73,49 @@ class DatosAbiertosSecopResilienciaTest extends TestCase
         $this->assertSame('PCI-SALUD', $result[0]['codigo_dependencia']);
         $this->assertSame('SECRETARÍA DE SALUD', $result[0]['nombre_dependencia']);
     }
+
+    public function test_consulta_vigencia_agrupa_varios_documentos_en_una_peticion_por_fuente(): void
+    {
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), 'jbjy-vk9h')) {
+                return Http::response([
+                    [
+                        'id_contrato' => 'CO1.PCCNTR.1',
+                        'referencia_del_contrato' => '1-2026',
+                        'documento_proveedor' => '111',
+                        'nit_entidad' => '900220547',
+                        'fecha_de_firma' => '2026-01-10T00:00:00.000',
+                        'fecha_de_inicio_del_contrato' => '2026-01-11T00:00:00.000',
+                        'fecha_de_fin_del_contrato' => '2026-03-11T00:00:00.000',
+                    ],
+                    [
+                        'id_contrato' => 'CO1.PCCNTR.2',
+                        'referencia_del_contrato' => '2-2026',
+                        'documento_proveedor' => '222',
+                        'nit_entidad' => '900220547',
+                        'fecha_de_firma' => '2026-02-10T00:00:00.000',
+                        'fecha_de_inicio_del_contrato' => '2026-02-11T00:00:00.000',
+                        'fecha_de_fin_del_contrato' => '2026-04-11T00:00:00.000',
+                    ],
+                ]);
+            }
+            if (str_contains($request->url(), 'f789-7hwg')) {
+                return Http::response([]);
+            }
+            return Http::response([]);
+        });
+
+        $result = (new DatosAbiertosSecopService(new SecopNormalizer()))
+            ->consultarPorDocumentosVigencia(['111', '222'], 2026, 50000, ['900220547']);
+
+        $this->assertSame([111, 222], array_keys($result));
+        $this->assertSame('CO1.PCCNTR.1', $result['111'][0]['identificador_externo']);
+        $this->assertSame('CO1.PCCNTR.2', $result['222'][0]['identificador_externo']);
+        Http::assertSentCount(2);
+        Http::assertSent(function (Request $request) {
+            if (!str_contains($request->url(), 'jbjy-vk9h')) return false;
+            $url = urldecode($request->url());
+            return str_contains($url, "documento_proveedor in('111','222')");
+        });
+    }
 }

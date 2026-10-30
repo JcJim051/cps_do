@@ -87,6 +87,13 @@ class SecopNormalizer
         return round((((float) $observed - (float) $planned) / (float) $planned) * 100, 2);
     }
 
+    public function unidadContratante(mixed $value): string
+    {
+        $text = Str::upper(Str::ascii(trim((string) $value)));
+
+        return preg_replace('/[^A-Z0-9]+/', '', $text) ?? '';
+    }
+
     /**
      * Convierte únicamente plazos publicados explícitamente en días. Para la
      * conciliación no aproximamos meses o años, porque perderíamos la precisión

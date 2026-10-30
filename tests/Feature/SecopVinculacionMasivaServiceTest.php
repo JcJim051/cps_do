@@ -8,6 +8,7 @@ use App\Models\SecopConciliacionLote;
 use App\Models\Seguimiento;
 use App\Services\SecopAlcanceEntidadService;
 use App\Services\SecopConciliacionService;
+use App\Services\DatosAbiertosSecopService;
 use App\Services\SecopVinculacionMasivaService;
 use App\Services\SecopVinculacionService;
 use Illuminate\Database\Schema\Blueprint;
@@ -149,7 +150,16 @@ class SecopVinculacionMasivaServiceTest extends TestCase
             ]);
         $links = Mockery::mock(SecopVinculacionService::class);
         $links->shouldNotReceive('vincularSeguimientoDesdeCandidato');
-        $service = new SecopVinculacionMasivaService($conciliation, $links, new SecopAlcanceEntidadService());
+        $secop = Mockery::mock(DatosAbiertosSecopService::class);
+        $secop->shouldReceive('consultarPorDocumentosVigencia')->once()
+            ->with(['1'], 2026, 50000, ['8920001488'])
+            ->andReturn(['1' => []]);
+        $service = new SecopVinculacionMasivaService(
+            $conciliation,
+            $links,
+            new SecopAlcanceEntidadService(),
+            $secop,
+        );
 
         $this->assertFalse($service->processNext($lote->id));
         $lote->refresh();
@@ -165,6 +175,7 @@ class SecopVinculacionMasivaServiceTest extends TestCase
             Mockery::mock(SecopConciliacionService::class),
             Mockery::mock(SecopVinculacionService::class),
             new SecopAlcanceEntidadService(),
+            Mockery::mock(DatosAbiertosSecopService::class),
         );
     }
 

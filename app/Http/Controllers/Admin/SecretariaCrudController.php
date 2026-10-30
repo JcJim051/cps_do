@@ -90,12 +90,12 @@ class SecretariaCrudController extends CrudController
         CRUD::addField([
             'name' => 'codigo_pci_secop',
             'label' => 'Código PCI / dependencia en SECOP',
-            'hint' => 'Opcional. Para dependencias centrales permite distinguir la Secretaría dentro del Departamento del Meta.',
+            'hint' => 'PCI publicado en SECOP II. Las dependencias centrales comparten el código 700817075.',
         ]);
         CRUD::addField([
             'name' => 'nombre_unidad_secop',
             'label' => 'Nombre de la unidad contratante en SECOP',
-            'hint' => 'Opcional e informativo. Puede completarse cuando Integra observe la unidad en Datos Abiertos.',
+            'hint' => 'Diferencia las Secretarías centrales. En entidades con NIT propio puede quedar vacío si SECOP publica varias unidades.',
         ]);
         CRUD::addField([
             'name' => 'auditoria_secop_incluida',
