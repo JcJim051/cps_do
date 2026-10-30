@@ -354,7 +354,7 @@ class SecopConciliacionService
                 && $margin >= 15
                 && $candidateMargin >= 15
                 && $mutualBest
-                && $best['evidencia_fecha']
+                && ($best['evidencia_fecha'] || $best['evidencia_unidad'])
                 && $best['evidencia_valor']
                 && $numberAllowsAutomatic;
 
@@ -446,12 +446,15 @@ class SecopConciliacionService
         })->values();
     }
 
-    /** @return array{puntaje:int,razones:array,evidencia_fecha:bool,evidencia_valor:bool,diferencia_valor_pct:?float,diferencia_fin_dias:?int} */
+    /** @return array{puntaje:int,razones:array,evidencia_fecha:bool,evidencia_unidad:bool,evidencia_valor:bool,diferencia_valor_pct:?float,diferencia_fin_dias:?int} */
     private function approximateScore(Seguimiento $seguimiento, array $candidate): array
     {
-        $score = 0;
+        // Estos tres criterios ya fueron verificados de forma obligatoria al
+        // construir los candidatos. También deben reflejarse en la confianza.
+        $score = 50;
         $reasons = ['Cédula exacta', 'Entidad contratante exacta', 'Vigencia compatible'];
         $dateEvidence = false;
+        $unitEvidence = false;
         $valueEvidence = false;
         $startDelay = null;
 
@@ -573,6 +576,7 @@ class SecopConciliacionService
         $candidateName = $this->normalizer->unidadContratante($candidate['nombre_dependencia'] ?? null);
         if ($dependencyName !== '' && $candidateName !== '' && $dependencyName === $candidateName) {
             $score += 15;
+            $unitEvidence = true;
             $reasons[] = 'Unidad contratante SECOP exacta';
         } elseif ($candidateName !== '') {
             $reasons[] = 'Unidad SECOP observada: '.($candidate['nombre_dependencia'] ?? $candidateName);
@@ -588,6 +592,7 @@ class SecopConciliacionService
             'puntaje' => min(100, $score),
             'razones' => $reasons,
             'evidencia_fecha' => $dateEvidence,
+            'evidencia_unidad' => $unitEvidence,
             'evidencia_valor' => $valueEvidence,
             'diferencia_valor_pct' => $bestValue !== null ? $this->normalizer->diferenciaPorcentual($plannedValue, $bestValue) : null,
             'diferencia_fin_dias' => $endDifference,

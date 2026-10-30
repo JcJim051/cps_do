@@ -252,6 +252,85 @@ class SecopConciliacionServiceTest extends TestCase
         $this->assertSame('CO1.PCCNTR.10081281', $row['candidato']['identificador_externo']);
     }
 
+    public function test_unidad_exacta_y_valor_permiten_vincular_si_las_fechas_planeadas_estan_vacias(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('8920001488');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '1026560711']);
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'tipo' => 'contrato', 'anio' => 2026, 'numero_contrato' => null,
+            'aut_despacho' => true, 'aut_planeacion' => true,
+            'valor_total' => 21200000, 'valor_total_contrato' => 21200000,
+        ]);
+        $tracking->id = 15908;
+        $tracking->setRelation('vinculoSecop', null);
+        $secretaria = new Secretaria();
+        $secretaria->setRawAttributes([
+            'codigo_pci_secop' => '700817075',
+            'nombre_unidad_secop' => 'SALUD',
+        ]);
+        $tracking->setRelation('secretaria', $secretaria);
+
+        $candidate = array_replace(
+            $this->contract('2458 DE 2026', '1026560711', 'CO1.SALUD', '2026-10-01'),
+            [
+                'nit_entidad' => '8920001488',
+                'codigo_dependencia' => '700817075',
+                'nombre_dependencia' => 'SALUD',
+                'fecha_inicio' => '2026-10-05',
+                'fecha_fin' => '2026-12-14',
+                'valor_contrato' => 12366667,
+                'valor_total_con_adiciones' => 12366667,
+            ],
+        );
+
+        $result = $service->conciliar($persona, collect([$tracking]), collect([$candidate]), collect());
+        $row = $result['filas'][0];
+
+        $this->assertSame('aproximado', $row['estado']);
+        $this->assertTrue($row['seguro']);
+        $this->assertGreaterThanOrEqual(75, $row['puntaje']);
+        $this->assertContains('Unidad contratante SECOP exacta', $row['razones']);
+    }
+
+    public function test_no_vincula_sin_fechas_ni_unidad_aunque_documento_entidad_y_valor_coincidan(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('8920001488');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '123']);
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'tipo' => 'contrato', 'anio' => 2026, 'numero_contrato' => null,
+            'aut_despacho' => true, 'aut_planeacion' => true,
+            'valor_total' => 10000000,
+        ]);
+        $tracking->id = 99;
+        $tracking->setRelation('vinculoSecop', null);
+        $secretaria = new Secretaria();
+        $secretaria->setRawAttributes(['nombre_unidad_secop' => 'SALUD']);
+        $tracking->setRelation('secretaria', $secretaria);
+        $candidate = array_replace(
+            $this->contract('1-2026', '123', 'CO1.NO-UNIT', '2026-01-01'),
+            ['nit_entidad' => '8920001488', 'valor_contrato' => 10000000, 'valor_total_con_adiciones' => 10000000],
+        );
+
+        $result = $service->conciliar($persona, collect([$tracking]), collect([$candidate]), collect());
+
+        $this->assertSame('requiere_revision', $result['filas'][0]['estado']);
+        $this->assertFalse($result['filas'][0]['seguro']);
+    }
+
     public function test_no_vincula_aproximadamente_si_dos_candidatos_tienen_el_mismo_puntaje(): void
     {
         $entity = Mockery::mock(SecopEntidadService::class);

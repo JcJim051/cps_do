@@ -251,8 +251,8 @@ class DatosAbiertosSecopService
         }
 
         $units = collect();
-        try {
-            foreach ($processIds->chunk(40) as $chunk) {
+        foreach ($processIds->chunk(40) as $chunk) {
+            try {
                 $quoted = $chunk
                     ->map(fn ($id) => "'".str_replace("'", "''", (string) $id)."'")
                     ->implode(',');
@@ -265,13 +265,14 @@ class DatosAbiertosSecopService
                     throw new \RuntimeException('SECOP II Procesos HTTP '.$response->status());
                 }
                 $units->push(...$response->json());
+            } catch (\Throwable $e) {
+                // Una falla puntual no debe descartar las unidades recuperadas
+                // para los demás contratos del bloque masivo.
+                Log::warning('No fue posible complementar un bloque de contratos SECOP con su unidad.', [
+                    'error' => $e->getMessage(),
+                    'procesos' => $chunk->count(),
+                ]);
             }
-        } catch (\Throwable $e) {
-            Log::warning('No fue posible complementar contratos SECOP con la unidad contratante.', [
-                'error' => $e->getMessage(),
-                'procesos' => $processIds->count(),
-            ]);
-            return $contracts;
         }
 
         $byProcess = $units->keyBy(fn (array $row) => (string) ($row['id_del_proceso'] ?? ''));
