@@ -144,7 +144,12 @@ class SecopVinculacionMasivaServiceTest extends TestCase
                 'consulta_secop_disponible' => true,
                 'filas' => collect([
                     ['seguimiento' => $first, 'estado' => 'sin_resultado', 'seguro' => false],
-                    ['seguimiento' => $second, 'estado' => 'requiere_revision', 'seguro' => false],
+                    [
+                        'seguimiento' => $second,
+                        'estado' => 'requiere_revision',
+                        'seguro' => false,
+                        'bloqueos' => ['valor_fuera_de_rango'],
+                    ],
                 ]),
                 'contratos_sin_seguimiento' => collect(),
             ]);
@@ -167,6 +172,7 @@ class SecopVinculacionMasivaServiceTest extends TestCase
         $this->assertSame(2, $lote->seguimientos_revisados);
         $this->assertSame(1, $lote->resultados['sin_contrato_encontrado']);
         $this->assertSame(1, $lote->resultados['entidad_o_documento_diferente']);
+        $this->assertSame(1, $lote->resultados['motivos_revision']['valor_fuera_de_rango']);
     }
 
     private function service(): SecopVinculacionMasivaService

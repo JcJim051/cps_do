@@ -329,6 +329,7 @@ class SecopConciliacionServiceTest extends TestCase
 
         $this->assertSame('requiere_revision', $result['filas'][0]['estado']);
         $this->assertFalse($result['filas'][0]['seguro']);
+        $this->assertContains('sin_fecha_ni_unidad', $result['filas'][0]['bloqueos']);
     }
 
     public function test_no_vincula_aproximadamente_si_dos_candidatos_tienen_el_mismo_puntaje(): void
@@ -366,6 +367,7 @@ class SecopConciliacionServiceTest extends TestCase
         $this->assertSame('requiere_revision', $result['filas'][0]['estado']);
         $this->assertFalse($result['filas'][0]['seguro']);
         $this->assertSame(0, $result['filas'][0]['margen']);
+        $this->assertContains('margen_seguimiento_insuficiente', $result['filas'][0]['bloqueos']);
     }
 
     public function test_seguimiento_expone_fin_y_tiempo_calendario_vigentes_sin_perder_los_iniciales(): void

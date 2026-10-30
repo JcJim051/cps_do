@@ -358,11 +358,21 @@ class SecopConciliacionService
                 && $best['evidencia_valor']
                 && $numberAllowsAutomatic;
 
+            $blockers = [];
+            if ($best['puntaje'] < 75) $blockers[] = 'puntaje_insuficiente';
+            if ($margin < 15) $blockers[] = 'margen_seguimiento_insuficiente';
+            if ($candidateMargin < 15) $blockers[] = 'margen_contrato_insuficiente';
+            if (!$mutualBest) $blockers[] = 'no_es_mejor_coincidencia_reciproca';
+            if (!$best['evidencia_fecha'] && !$best['evidencia_unidad']) $blockers[] = 'sin_fecha_ni_unidad';
+            if (!$best['evidencia_valor']) $blockers[] = 'valor_fuera_de_rango';
+            if (!$numberAllowsAutomatic) $blockers[] = 'numero_local_diferente';
+
             $row['candidato'] = $best['candidato'];
             $row['cantidad_candidatos'] = $ranked->count();
             $row['puntaje'] = $best['puntaje'];
             $row['margen'] = min($margin, $candidateMargin);
             $row['razones'] = $best['razones'];
+            $row['bloqueos'] = $blockers;
             $row['diferencia_valor_pct'] = $best['diferencia_valor_pct'];
             $row['diferencia_fin_dias'] = $best['diferencia_fin_dias'];
             if ($safe) {

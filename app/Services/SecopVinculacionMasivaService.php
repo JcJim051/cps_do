@@ -166,6 +166,11 @@ class SecopVinculacionMasivaService
             foreach ($rows as $row) {
                 $key = $this->resultKey((string) ($row['estado'] ?? 'sin_resultado'));
                 $results[$key]++;
+                if (($row['estado'] ?? null) === 'requiere_revision') {
+                    foreach (array_unique($row['bloqueos'] ?? ['revision_sin_detalle']) as $blocker) {
+                        $results['motivos_revision'][$blocker] = ($results['motivos_revision'][$blocker] ?? 0) + 1;
+                    }
+                }
             }
             $results['vinculos_fallidos'] += $linkFailures;
 
@@ -264,6 +269,7 @@ class SecopVinculacionMasivaService
             'contrato_utilizado' => 0,
             'no_habilitados' => 0,
             'vinculos_fallidos' => 0,
+            'motivos_revision' => [],
         ];
     }
 

@@ -259,6 +259,21 @@
         ].filter(item => item[1] > 0)
          .map(item => `<span class="badge bg-light text-dark border">${item[0]}: ${item[1]}</span>`)
          .join(' ');
+        const blockerLabels = {
+            puntaje_insuficiente: 'Puntaje insuficiente',
+            margen_seguimiento_insuficiente: 'Dos contratos similares para el Seguimiento',
+            margen_contrato_insuficiente: 'El contrato compite con otro Seguimiento',
+            no_es_mejor_coincidencia_reciproca: 'No es la mejor coincidencia recíproca',
+            sin_fecha_ni_unidad: 'Sin fechas ni unidad contratante confirmada',
+            valor_fuera_de_rango: 'Valor fuera del rango permitido',
+            numero_local_diferente: 'Número local diferente',
+            revision_sin_detalle: 'Revisión sin detalle',
+        };
+        const blockerSummary = Object.entries(results.motivos_revision || {})
+            .filter(([, count]) => Number(count) > 0)
+            .sort((a, b) => Number(b[1]) - Number(a[1]))
+            .map(([key, count]) => `${blockerLabels[key] || key}: ${count}`)
+            .join(' · ');
         progress.innerHTML = `
             <div class="d-flex justify-content-between align-items-center gap-3 mb-1">
                 <strong>${statusLabel(run.estado)}</strong>
@@ -267,6 +282,7 @@
             <div class="progress mb-2" style="height:8px"><div class="progress-bar" style="width:${run.porcentaje}%"></div></div>
             <div>${run.personas_procesadas} de ${run.total_personas} personas · ${run.coincidencias_exactas} coincidencias automáticas detectadas · ${run.vinculos_creados} vínculos · ${run.errores} errores</div>
             <div class="small mt-1"><strong>${run.seguimientos_revisados || 0}</strong> Seguimientos sin vínculo revisados${reasons ? ` · ${reasons}` : ''}</div>
+            ${blockerSummary ? `<div class="small text-muted mt-1"><strong>Motivos de revisión:</strong> ${blockerSummary}</div>` : ''}
             <small>Última actualización: ${run.actualizado || '—'}.${active ? ' Puedes salir de esta página; el proceso continúa en el servidor.' : ''}</small>
             ${run.ultimo_error ? `<details class="mt-1 small text-danger"><summary>Ver detalle del último error</summary><div class="mt-1 text-break">${escapeHtml(run.ultimo_error)}</div></details>` : ''}`;
         progress.querySelector('.btn-close')?.addEventListener('click', () => progress.classList.add('d-none'));
