@@ -597,7 +597,7 @@ class DatosAbiertosSecopService
             'modalidad_de_contratacion', 'fecha_de_firma', 'fecha_de_inicio_del_contrato',
             'fecha_de_fin_del_contrato', 'valor_del_contrato', 'proveedor_adjudicado',
             'duraci_n_del_contrato', 'dias_adicionados', 'ultima_actualizacion',
-            'documento_proveedor', 'urlproceso', 'objeto_del_contrato',
+            'documento_proveedor', 'urlproceso', 'objeto_del_contrato', 'codigo_entidad',
         ]);
     }
 
@@ -611,6 +611,11 @@ class DatosAbiertosSecopService
             'departamento' => $row['departamento'] ?? null,
             'ciudad' => $row['ciudad'] ?? null,
             'proceso_de_compra' => $row['proceso_de_compra'] ?? null,
+            // En los contratos directos CO1.BDOS puede no existir una fila
+            // equivalente en Procesos. El código PCI publicado en el propio
+            // contrato sigue siendo útil y no debe perderse.
+            'codigo_dependencia' => $row['codigo_entidad'] ?? null,
+            'nombre_dependencia' => null,
             'id_proceso' => $row['proceso_de_compra'] ?? null,
             'id_contrato' => $row['id_contrato'] ?? null,
             'referencia_contrato' => $row['referencia_del_contrato'] ?? null,

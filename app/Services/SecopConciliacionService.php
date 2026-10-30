@@ -567,8 +567,16 @@ class SecopConciliacionService
         } elseif ($localDays !== null && $candidateStart && $candidateEnd) {
             $candidateDays = $candidateStart->diffInDays($candidateEnd) + 1;
             $durationDifference = abs($candidateDays - (int) $localDays);
-            if ($durationDifference <= 7) $score += 10;
-            elseif ($durationDifference <= 30) $score += 6;
+            if ($durationDifference <= 7) {
+                $score += 10;
+                $dateEvidence = true;
+            } elseif ($durationDifference <= 30) {
+                $score += 6;
+                // El proceso contractual puede perder días frente a lo
+                // planeado. Una diferencia acotada sigue siendo evidencia
+                // temporal, aunque Integra aún no tenga fechas extremas.
+                $dateEvidence = true;
+            }
             elseif ($durationDifference <= 60) $score += 3;
             if ($durationDifference <= 60) $reasons[] = "Duración con diferencia de {$durationDifference} día(s)";
         }

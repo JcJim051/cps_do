@@ -74,6 +74,28 @@ class DatosAbiertosSecopResilienciaTest extends TestCase
         $this->assertSame('SECRETARÍA DE SALUD', $result[0]['nombre_dependencia']);
     }
 
+    public function test_contrato_directo_conserva_codigo_entidad_aunque_no_exista_en_procesos(): void
+    {
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), 'jbjy-vk9h')) {
+                return Http::response([[
+                    'id_contrato' => 'CO1.PCCNTR.10017157',
+                    'proceso_de_compra' => 'CO1.BDOS.10947183',
+                    'referencia_del_contrato' => '2458 DE 2026',
+                    'documento_proveedor' => '1026560711',
+                    'codigo_entidad' => '700817075',
+                ]]);
+            }
+            return Http::response([]);
+        });
+
+        $result = (new DatosAbiertosSecopService(new SecopNormalizer()))
+            ->consultarPorDocumento('1026560711');
+
+        $this->assertSame('700817075', $result[0]['codigo_dependencia']);
+        $this->assertNull($result[0]['nombre_dependencia']);
+    }
+
     public function test_consulta_vigencia_agrupa_varios_documentos_en_una_peticion_por_fuente(): void
     {
         Http::fake(function (Request $request) {

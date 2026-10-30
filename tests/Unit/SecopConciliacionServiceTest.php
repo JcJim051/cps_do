@@ -332,6 +332,44 @@ class SecopConciliacionServiceTest extends TestCase
         $this->assertContains('sin_fecha_ni_unidad', $result['filas'][0]['bloqueos']);
     }
 
+    public function test_duracion_calculada_compensa_fechas_locales_vacias_con_reduccion_contractual(): void
+    {
+        $entity = Mockery::mock(SecopEntidadService::class);
+        $entity->shouldReceive('nitParaSeguimiento')->once()->andReturn('8920001488');
+        $service = new SecopConciliacionService(
+            Mockery::mock(DatosAbiertosSecopService::class),
+            new SecopNormalizer(),
+            $entity,
+        );
+        $persona = new Persona(['cedula_o_nit' => '40332875']);
+        $tracking = new Seguimiento();
+        $tracking->setRawAttributes([
+            'tipo' => 'contrato', 'anio' => 2026, 'numero_contrato' => null,
+            'aut_despacho' => true, 'aut_planeacion' => true,
+            'tiempo_ejecucion_dias' => 120,
+            'valor_total' => 21200000, 'valor_total_contrato' => 21200000,
+        ]);
+        $tracking->id = 15916;
+        $tracking->setRelation('vinculoSecop', null);
+
+        $candidate = array_replace(
+            $this->contract('2321 DE 2026', '40332875', 'CO1.DURATION', '2026-09-10'),
+            [
+                'nit_entidad' => '8920001488',
+                'fecha_inicio' => '2026-09-16',
+                'fecha_fin' => '2026-12-15',
+                'valor_contrato' => 15900000,
+                'valor_total_con_adiciones' => 15900000,
+            ],
+        );
+
+        $row = $service->conciliar($persona, collect([$tracking]), collect([$candidate]), collect())['filas'][0];
+
+        $this->assertSame('aproximado', $row['estado']);
+        $this->assertTrue($row['seguro']);
+        $this->assertContains('Duración con diferencia de 29 día(s)', $row['razones']);
+    }
+
     public function test_no_vincula_aproximadamente_si_dos_candidatos_tienen_el_mismo_puntaje(): void
     {
         $entity = Mockery::mock(SecopEntidadService::class);
